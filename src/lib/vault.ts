@@ -5,24 +5,25 @@ import { useStore } from '../store/store'
 import { useSrsStore } from '../store/srs-store'
 import { subscribeHistory } from './history'
 import {
-  docToMarkdown,
-  markdownToDoc,
-  pageToMarkdown,
-  sanitizeFilename,
-} from './markdown'
+  folderPickingSupported,
+  forgetVault,
+  pickFolderWithPath,
+  requestVaultPermission,
+  restoreVault,
+  type FolderFS,
+} from './fs-adapter'
+import { markdownToDoc, pageToMarkdown, sanitizeFilename } from './markdown'
 import { childrenOf, type Pages } from './tree'
 
 /**
  * Folder vaults, the Obsidian way: the user picks a folder, every page lives
  * there as a plain markdown file (folders = hierarchy), and cards, review
  * logs, and history live in a hidden `.arete/` subfolder. Data never leaves
- * the device. Built on the File System Access API (Chrome/Edge; the same
- * layer maps 1:1 onto a desktop shell later). While connected, the vault is
- * the durable copy: every change mirrors to disk; the app re-reads the
- * folder on launch, so external edits to the markdown are picked up.
+ * the device. Runs on the File System Access API in the browser and on the
+ * native filesystem in the desktop app — same code, two engines. While
+ * connected the vault is the durable copy: every change mirrors to disk, and
+ * the folder is re-read on launch so external markdown edits are picked up.
  */
-
-type DirHandle = FileSystemDirectoryHandle
 
 export interface VaultStatus {
   supported: boolean
@@ -35,7 +36,7 @@ export interface VaultStatus {
 }
 
 export const useVault = create<VaultStatus>(() => ({
-  supported: typeof window !== 'undefined' && 'showDirectoryPicker' in window,
+  supported: folderPickingSupported(),
   connected: false,
   name: null,
   state: 'idle',
@@ -43,53 +44,11 @@ export const useVault = create<VaultStatus>(() => ({
   error: null,
 }))
 
-let root: DirHandle | null = null
+let vaultFS: FolderFS | null = null
 let fileCache = new Map<string, string>()
 let syncTimer: number | null = null
 let hydrating = false
 let subscribed = false
-
-// ---------------------------------------------------------------------------
-// IndexedDB slot for the directory handle (survives reloads)
-// ---------------------------------------------------------------------------
-
-function idb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('arete-vault', 1)
-    req.onupgradeneeded = () => req.result.createObjectStore('kv')
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-async function idbSet(key: string, value: unknown) {
-  const db = await idb()
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('kv', 'readwrite')
-    tx.objectStore('kv').put(value, key)
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-  })
-}
-
-async function idbGet<T>(key: string): Promise<T | undefined> {
-  const db = await idb()
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('kv', 'readonly').objectStore('kv').get(key)
-    req.onsuccess = () => resolve(req.result as T | undefined)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-async function idbDelete(key: string) {
-  const db = await idb()
-  await new Promise<void>(resolve => {
-    const tx = db.transaction('kv', 'readwrite')
-    tx.objectStore('kv').delete(key)
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => resolve()
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -102,7 +61,7 @@ function computePaths(pages: Pages): Map<string, string[]> {
   const walk = (parentId: string | null, prefix: string[]) => {
     const used = new Set<string>()
     for (const page of childrenOf(pages, parentId)) {
-      let base = sanitizeFilename(page.title || 'Untitled')
+      const base = sanitizeFilename(page.title || 'Untitled')
       let candidate = base
       let n = 2
       while (used.has(candidate.toLowerCase())) candidate = `${base} ${n++}`
@@ -115,66 +74,14 @@ function computePaths(pages: Pages): Map<string, string[]> {
   return paths
 }
 
-async function getDir(segments: string[], createDirs: boolean): Promise<DirHandle | null> {
-  if (!root) return null
-  let dir: DirHandle = root
-  for (const seg of segments) {
-    try {
-      dir = await dir.getDirectoryHandle(seg, { create: createDirs })
-    } catch {
-      return null
+async function pruneEmptyDirs(fs: FolderFS, path: string[]): Promise<void> {
+  const entries = await fs.list(path)
+  for (const entry of entries) {
+    if (entry.dir && entry.name !== '.arete' && !entry.name.startsWith('.')) {
+      await pruneEmptyDirs(fs, [...path, entry.name])
     }
   }
-  return dir
-}
-
-async function writePath(path: string, contents: string) {
-  const segments = path.split('/')
-  const name = segments.pop()!
-  const dir = await getDir(segments, true)
-  if (!dir) throw new Error('vault directory unavailable: ' + path)
-  const file = await dir.getFileHandle(name, { create: true })
-  const writable = await file.createWritable()
-  await writable.write(contents)
-  await writable.close()
-}
-
-async function deletePath(path: string) {
-  const segments = path.split('/')
-  const name = segments.pop()!
-  const dir = await getDir(segments, false)
-  if (!dir) return
-  try {
-    await dir.removeEntry(name)
-  } catch {
-    /* already gone */
-  }
-}
-
-async function pruneEmptyDirs(dir: DirHandle, isRoot: boolean): Promise<boolean> {
-  let hasEntries = false
-  const subdirs: { name: string; handle: DirHandle }[] = []
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-    if (handle.kind === 'directory' && name !== '.arete') {
-      subdirs.push({ name, handle: handle as DirHandle })
-    } else {
-      hasEntries = true
-    }
-  }
-  for (const sub of subdirs) {
-    const empty = await pruneEmptyDirs(sub.handle, false)
-    if (empty) {
-      try {
-        await dir.removeEntry(sub.name)
-      } catch {
-        hasEntries = true
-      }
-    } else {
-      hasEntries = true
-    }
-  }
-  return !isRoot && !hasEntries
+  if (path.length) await fs.removeEmptyDir(path)
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +126,7 @@ function restoreHistory(json: string | null) {
 // ---------------------------------------------------------------------------
 
 export function scheduleVaultSync() {
-  if (!root || hydrating) return
+  if (!vaultFS || hydrating) return
   if (syncTimer) window.clearTimeout(syncTimer)
   syncTimer = window.setTimeout(() => {
     void runSync()
@@ -227,7 +134,8 @@ export function scheduleVaultSync() {
 }
 
 async function runSync() {
-  if (!root || hydrating) return
+  const fs = vaultFS
+  if (!fs || hydrating) return
   useVault.setState({ state: 'syncing' })
   try {
     const pagesState = useStore.getState()
@@ -236,31 +144,32 @@ async function runSync() {
     const titleOf = (id: string) => (pages[id] ? pages[id].title || 'Untitled' : null)
     const paths = computePaths(pages)
 
-    const desired = new Map<string, string>()
+    const desired = new Map<string, { segs: string[]; contents: string }>()
+    const put = (segs: string[], contents: string) => desired.set(segs.join('/'), { segs, contents })
     for (const [id, segments] of paths) {
-      desired.set(segments.join('/') + '.md', pageToMarkdown(pages[id], titleOf))
+      put([...segments.slice(0, -1), segments[segments.length - 1] + '.md'], pageToMarkdown(pages[id], titleOf))
     }
-    desired.set('.arete/cards.json', JSON.stringify(srs.cards, null, 2))
-    desired.set('.arete/logs.json', JSON.stringify(srs.logs))
-    desired.set('.arete/history.json', dumpHistory())
-    desired.set(
-      '.arete/meta.json',
+    put(['.arete', 'cards.json'], JSON.stringify(srs.cards, null, 2))
+    put(['.arete', 'logs.json'], JSON.stringify(srs.logs))
+    put(['.arete', 'history.json'], dumpHistory())
+    put(
+      ['.arete', 'meta.json'],
       JSON.stringify({ version: 1, favorites: pagesState.favorites, theme: pagesState.theme }, null, 2),
     )
 
-    for (const [path, contents] of desired) {
-      if (fileCache.get(path) !== contents) {
-        await writePath(path, contents)
-        fileCache.set(path, contents)
+    for (const [key, file] of desired) {
+      if (fileCache.get(key) !== file.contents) {
+        await fs.write(file.segs, file.contents)
+        fileCache.set(key, file.contents)
       }
     }
-    for (const path of [...fileCache.keys()]) {
-      if (!desired.has(path)) {
-        await deletePath(path)
-        fileCache.delete(path)
+    for (const key of [...fileCache.keys()]) {
+      if (!desired.has(key)) {
+        await fs.remove(key.split('/'))
+        fileCache.delete(key)
       }
     }
-    await pruneEmptyDirs(root, true)
+    await pruneEmptyDirs(fs, [])
     useVault.setState({ state: 'idle', lastSync: Date.now(), error: null })
   } catch (err) {
     useVault.setState({ state: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -289,26 +198,20 @@ interface RawFile {
 }
 
 async function collectVaultFiles(
-  dir: DirHandle,
+  fs: FolderFS,
+  dir: string[],
   parentId: string | null,
   out: RawFile[],
 ): Promise<void> {
-  const files = new Map<string, string>() // base name -> raw md
-  const dirs = new Map<string, DirHandle>()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-    if (name.startsWith('.')) continue
-    if (handle.kind === 'file' && name.endsWith('.md')) {
-      const file = await (handle as FileSystemFileHandle).getFile()
-      files.set(name.slice(0, -3), await file.text())
-    } else if (handle.kind === 'directory') {
-      dirs.set(name, handle as DirHandle)
-    }
-  }
+  const entries = await fs.list(dir)
+  const mdFiles = entries.filter(e => !e.dir && e.name.endsWith('.md') && !e.name.startsWith('.'))
+  const dirs = entries.filter(e => e.dir && !e.name.startsWith('.'))
 
   let idx = 0
   const idsByBase = new Map<string, string>()
-  for (const [base, raw] of files) {
+  for (const file of mdFiles) {
+    const base = file.name.slice(0, -3)
+    const raw = (await fs.read([...dir, file.name])) ?? ''
     const meta: Record<string, string> = {}
     const lines = raw.split('\n')
     if (lines[0] === '---') {
@@ -330,22 +233,24 @@ async function collectVaultFiles(
     idx++
   }
 
-  for (const [name, sub] of dirs) {
-    let owner = idsByBase.get(name)
+  for (const sub of dirs) {
+    let owner = idsByBase.get(sub.name)
     if (!owner) {
       // Folder without a matching page file — represent it as a plain page.
       owner = crypto.randomUUID()
-      out.push({ id: owner, title: name, parentId, meta: {}, body: '', order: idx++ })
+      out.push({ id: owner, title: sub.name, parentId, meta: {}, body: '', order: idx++ })
     }
-    await collectVaultFiles(sub, owner, out)
+    await collectVaultFiles(fs, [...dir, sub.name], owner, out)
   }
 }
 
-async function loadVault(dir: DirHandle) {
+async function loadVault(fs: FolderFS): Promise<boolean> {
   hydrating = true
   try {
     const raw: RawFile[] = []
-    await collectVaultFiles(dir, null, raw)
+    await collectVaultFiles(fs, [], null, raw)
+
+    if (raw.length === 0) return false // empty folder — caller seeds instead
 
     const titleToId = new Map<string, string>()
     for (const file of raw) {
@@ -373,10 +278,10 @@ async function loadVault(dir: DirHandle) {
     }
 
     const readJson = async <T>(name: string): Promise<T | null> => {
+      const text = await fs.read(['.arete', name])
+      if (!text) return null
       try {
-        const areteDir = await dir.getDirectoryHandle('.arete')
-        const fh = await areteDir.getFileHandle(name)
-        return JSON.parse(await (await fh.getFile()).text()) as T
+        return JSON.parse(text) as T
       } catch {
         return null
       }
@@ -385,23 +290,8 @@ async function loadVault(dir: DirHandle) {
     const cards = (await readJson<Record<string, never>>('cards.json')) ?? {}
     const logs = (await readJson<never[]>('logs.json')) ?? []
     const meta = await readJson<{ favorites?: string[] }>('meta.json')
-    const historyDump = await (async () => {
-      try {
-        const areteDir = await dir.getDirectoryHandle('.arete')
-        const fh = await areteDir.getFileHandle('history.json')
-        return await (await fh.getFile()).text()
-      } catch {
-        return null
-      }
-    })()
+    restoreHistory(await fs.read(['.arete', 'history.json']))
 
-    if (Object.keys(pages).length === 0) {
-      // Empty folder: nothing to load — caller seeds instead.
-      hydrating = false
-      return false
-    }
-
-    restoreHistory(historyDump)
     const firstRoot = childrenOf(pages, null)[0]?.id ?? null
     useStore.setState({
       pages,
@@ -425,25 +315,24 @@ async function loadVault(dir: DirHandle) {
 // Public API
 // ---------------------------------------------------------------------------
 
-async function attach(dir: DirHandle) {
-  root = dir
+async function attach(fs: FolderFS, tauriPath?: string) {
+  vaultFS = fs
   fileCache = new Map()
-  await idbSet('handle', dir)
-  useVault.setState({ connected: true, name: dir.name, state: 'idle', error: null })
+  const { persistVault } = await import('./fs-adapter')
+  await persistVault(fs, tauriPath)
+  useVault.setState({ connected: true, name: fs.name, state: 'idle', error: null })
   subscribeStores()
 }
 
 /** Seed a folder from the current workspace ("Create vault"). */
 export async function createVaultFromWorkspace(): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dir: DirHandle = await (window as any).showDirectoryPicker({ id: 'arete-vault', mode: 'readwrite' })
-  try {
-    await dir.getDirectoryHandle('.arete')
+  const picked = await pickFolderWithPath()
+  if (!picked) return null // cancelled
+  const existing = await picked.fs.list(['.arete'])
+  if (existing.length > 0) {
     return 'That folder already contains a vault — use “Open existing vault” instead.'
-  } catch {
-    /* good: fresh folder */
   }
-  await attach(dir)
+  await attach(picked.fs, picked.tauriPath)
   await runSync()
   return null
 }
@@ -451,50 +340,41 @@ export async function createVaultFromWorkspace(): Promise<string | null> {
 /** Open a folder that already is a vault (or plain markdown) — replaces the
  * current in-app workspace with the folder's contents. */
 export async function openVault(): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dir: DirHandle = await (window as any).showDirectoryPicker({ id: 'arete-vault', mode: 'readwrite' })
-  await attach(dir)
-  const loaded = await loadVault(dir)
-  if (!loaded) {
-    await runSync() // empty folder: behave like "create"
-    return null
-  }
-  await runSync()
-  return null
+  const picked = await pickFolderWithPath()
+  if (!picked) return null // cancelled
+  await attach(picked.fs, picked.tauriPath)
+  const loaded = await loadVault(picked.fs)
+  await runSync() // empty folder behaves like "create"; loaded vaults write back normalized files
+  return loaded ? null : 'Folder was empty — created a vault from the current workspace.'
 }
 
 export async function disconnectVault() {
-  root = null
+  vaultFS = null
   fileCache = new Map()
-  await idbDelete('handle')
+  await forgetVault()
   useVault.setState({ connected: false, name: null, state: 'idle', error: null })
 }
 
-/** On boot: re-attach a remembered vault if permission is still granted. */
+/** On boot: re-attach a remembered vault if possible without prompting. */
 export async function tryRestoreVault() {
   if (!useVault.getState().supported) return
-  const handle = await idbGet<DirHandle>('handle').catch(() => undefined)
-  if (!handle) return
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const perm = await (handle as any).queryPermission?.({ mode: 'readwrite' })
-  if (perm === 'granted') {
-    await attach(handle)
-    await loadVault(handle)
-    await runSync()
-  } else {
-    useVault.setState({ name: handle.name, state: 'permission' })
+  const restored = await restoreVault().catch(() => null)
+  if (!restored) return
+  if ('permission' in restored) {
+    useVault.setState({ name: restored.permission, state: 'permission' })
+    return
   }
+  await attach(restored.fs)
+  await loadVault(restored.fs)
+  await runSync()
 }
 
-/** Permission re-grant needs a user gesture — called from the Reconnect button. */
+/** Web only: permission re-grant needs a user gesture (Reconnect button). */
 export async function reconnectVault(): Promise<boolean> {
-  const handle = await idbGet<DirHandle>('handle').catch(() => undefined)
-  if (!handle) return false
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const perm = await (handle as any).requestPermission?.({ mode: 'readwrite' })
-  if (perm !== 'granted') return false
-  await attach(handle)
-  await loadVault(handle)
+  const fs = await requestVaultPermission()
+  if (!fs) return false
+  await attach(fs)
+  await loadVault(fs)
   await runSync()
   return true
 }
@@ -512,7 +392,7 @@ function stripNotionName(name: string): string {
 /** Rewrite Notion's relative markdown links into wikilinks before parsing. */
 function preprocessNotionMd(md: string): string {
   return md
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // images: dropped (kept local by Notion export)
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // images: dropped
     .replace(/\[([^\]]+)\]\(([^)]+\.md)\)/g, (_m, _text: string, target: string) => {
       const base = decodeURIComponent(target.split('/').pop()!.replace(/\.md$/, ''))
       return `[[${stripNotionName(base)}]]`
@@ -529,28 +409,28 @@ interface NotionFile {
 }
 
 async function collectNotion(
-  dir: DirHandle,
+  fs: FolderFS,
+  dir: string[],
   parentKey: string | null,
-  prefix: string,
   out: NotionFile[],
 ): Promise<void> {
-  const dirs: { name: string; handle: DirHandle }[] = []
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-    if (handle.kind === 'file' && (name.endsWith('.md') || name.endsWith('.csv'))) {
-      const kind = name.endsWith('.md') ? 'md' : 'csv'
-      const base = stripNotionName(name.replace(/\.(md|csv)$/, '').replace(/_all$/, ''))
-      const file = await (handle as FileSystemFileHandle).getFile()
-      out.push({ title: base, parentKey, key: prefix + name, kind, text: await file.text() })
-    } else if (handle.kind === 'directory') {
-      dirs.push({ name, handle: handle as DirHandle })
+  const entries = await fs.list(dir)
+  const dirs: string[] = []
+  for (const entry of entries) {
+    if (!entry.dir && /\.(md|csv)$/.test(entry.name)) {
+      const kind = entry.name.endsWith('.md') ? 'md' : 'csv'
+      const base = stripNotionName(entry.name.replace(/\.(md|csv)$/, '').replace(/_all$/, ''))
+      const text = (await fs.read([...dir, entry.name])) ?? ''
+      out.push({ title: base, parentKey, key: [...dir, entry.name].join('/'), kind, text })
+    } else if (entry.dir) {
+      dirs.push(entry.name)
     }
   }
-  for (const { name, handle } of dirs) {
+  for (const name of dirs) {
     const base = stripNotionName(name)
     // A folder's pages belong to the page whose file shares its name.
     const owner = out.find(f => f.parentKey === parentKey && f.title === base)
-    await collectNotion(handle, owner ? owner.key : parentKey, prefix + name + '/', out)
+    await collectNotion(fs, [...dir, name], owner ? owner.key : parentKey, out)
   }
 }
 
@@ -566,9 +446,7 @@ function csvToDoc(csv: string): JSONContent {
           type: 'paragraph',
           content: [
             { type: 'text', text: cells[0] || '—', marks: [{ type: 'bold' }] },
-            ...(cells.length > 1
-              ? [{ type: 'text', text: '  ·  ' + cells.slice(1).join(' · ') }]
-              : []),
+            ...(cells.length > 1 ? [{ type: 'text', text: '  ·  ' + cells.slice(1).join(' · ') }] : []),
           ],
         },
       ],
@@ -586,12 +464,13 @@ function csvToDoc(csv: string): JSONContent {
   }
 }
 
-/** Import an unzipped Notion export folder as a new page subtree. */
-export async function importNotionExport(): Promise<{ pages: number } | { error: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dir: DirHandle = await (window as any).showDirectoryPicker({ id: 'notion-import', mode: 'read' })
+/** Import an unzipped Notion export folder as a new page subtree.
+ * Resolves null when the user cancels the picker. */
+export async function importNotionExport(): Promise<{ pages: number } | { error: string } | null> {
+  const picked = await pickFolderWithPath()
+  if (!picked) return null
   const files: NotionFile[] = []
-  await collectNotion(dir, null, '', files)
+  await collectNotion(picked.fs, [], null, files)
   if (!files.length) return { error: 'No markdown or CSV files found in that folder.' }
 
   const now = Date.now()

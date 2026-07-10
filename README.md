@@ -16,6 +16,20 @@ npm run dev      # → http://localhost:5173
 
 `npm run build` typechecks and produces a static bundle in `dist/`.
 
+## Desktop app (Tauri)
+
+```sh
+npm run tauri:dev     # native window against the dev server
+npm run tauri:build   # → src-tauri/target/release/bundle/dmg/Arete_*.dmg
+```
+
+Requires Rust ≥ 1.88 (`rustup`) and Xcode command line tools. The desktop
+build uses the native folder picker and filesystem for vaults (WKWebView has
+no File System Access API), through the same `FolderFS` adapter as the web
+app — `src/lib/fs-adapter.ts` is the only file that knows the difference.
+The bundle is unsigned/ad-hoc signed: on first launch, right-click the app →
+Open (or `xattr -d com.apple.quarantine /Applications/Arete.app`).
+
 ## What it does
 
 - **Live markdown** — formatting applies as you type, no preview pane:

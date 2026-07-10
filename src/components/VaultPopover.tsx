@@ -68,8 +68,8 @@ export function VaultButton() {
 
           {!vault.supported ? (
             <div className="vault-note">
-              Folder vaults use the File System Access API — available in Chrome and Edge (and in
-              the desktop app later).
+              Folder vaults need Chrome, Edge, or the Arete desktop app — this browser has no way
+              to open folders.
             </div>
           ) : vault.connected ? (
             <>
@@ -160,6 +160,7 @@ export function VaultButton() {
 
 async function importNotionAction(): Promise<string | null> {
   const result = await importNotionExport()
+  if (result === null) return null // picker cancelled
   if ('error' in result) return result.error
   return `Imported ${result.pages} page${result.pages === 1 ? '' : 's'} — see “Notion import” in the sidebar.`
 }
