@@ -1,0 +1,23 @@
+{
+  "identifier": "default",
+  "description": "Arete main window: folder vaults anywhere the user points us.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-read-dir",
+    "fs:allow-exists",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }, { "path": "**/*" }, { "path": "**/.*" }, { "path": "**/.*/**" }]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arete</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 19 L9.5 5.5 L13.2 11.2 L17 4.5 L22 19' fill='none' stroke='%232E6B5E' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var raw = localStorage.getItem('arete')
+        var saved = raw ? JSON.parse(raw) : null
+        var theme =
+          (saved && saved.state && saved.state.theme) ||
+          (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        document.documentElement.dataset.theme = theme
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light'
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

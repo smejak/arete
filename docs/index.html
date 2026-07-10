@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arete</title>
+<meta name="description" content="Arete is a workspace that combines note-taking with spaced repetition." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 19 L9.5 5.5 L13.2 11.2 L17 4.5 L22 19' fill='none' stroke='%23bdbdbd' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: #191919;
+    color: #d3d3d3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 18px;
+    line-height: 1.42;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 88px 28px 120px; }
+  h1 {
+    font-size: clamp(38px, 6vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #ededed;
+    margin: 0 0 20px;
+  }
+  p { margin: 0 0 15px; }
+  strong { color: #ededed; font-weight: 700; }
+  .label { color: #ededed; font-weight: 700; margin: 0 0 16px; }
+  hr {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    margin: 36px 0;
+  }
+  ul { margin: 0 0 15px; padding-left: 28px; }
+  li { margin: 0 0 11px; padding-left: 6px; }
+  li::marker { color: #7d7d7d; }
+  a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.45);
+    text-underline-offset: 3px;
+  }
+  a:hover { text-decoration-color: currentColor; }
+  a:focus-visible { outline: 2px solid #8ab4a4; outline-offset: 3px; border-radius: 2px; }
+  @media (max-width: 640px) { body { font-size: 16px; } .wrap { padding: 56px 22px 90px; } }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Arete</h1>
+
+    <p>Spaced repetition software can be a powerful tool for creating a context in which to think.</p>
+    <p>I have found spaced repetition works best when it is closely tied to what I&rsquo;m working on.</p>
+    <p>Arete is a workspace that combines note-taking with spaced repetition.</p>
+
+    <hr />
+
+    <p class="label">To get started:</p>
+    <ul>
+      <li>download the app (it&rsquo;s free, all your files are local, no data ever leaves your computer)</li>
+      <li>create a new folder or port over your existing notes (Arete notes are .md files)</li>
+      <li>start using Arete (to create cards, just highlight a piece of text in your notes and right-click)</li>
+    </ul>
+
+    <hr />
+
+    <p class="label">Spaced repetition:</p>
+    <p>Arete uses open-source spaced repetition software (FSRS) as well as two new features for different card types. I wanted to make flash cards as versatile as notes. Arete ships three card types:</p>
+    <ul>
+      <li><strong>classic spaced repetition cards</strong></li>
+      <li><strong>routine cards</strong> (cards appear regularly at specified times and intervals; useful for reminders, habits, or just denser card exposure)</li>
+      <li><strong>temporary cards</strong> (cards will only be in the deck until a specified date, then archived, frequency can also be adjusted; use for specific time-bound tasks like talks, short-term projects, preparing for a meeting, etc.)</li>
+    </ul>
+    <p>Cards automatically have references to the pages and text they were created from.</p>
+
+    <hr />
+
+    <p>Have a question or feedback? Please submit an issue on the <a href="https://github.com/smejak/arete" target="_blank" rel="noopener">GitHub page</a>.</p>
+    <p>Download the app <a href="https://github.com/smejak/arete/releases/download/v0.0.1/Arete.dmg">here</a>.</p>
+  </main>
+</body>
+</html>
