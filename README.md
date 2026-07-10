@@ -1,152 +1,93 @@
 # Arete
 
-A local, single-user Notion-style workspace. Everything lives in your browser's
-localStorage — no accounts, no sync, no server. The name reads two ways: *aretē*
-(Greek: excellence as a practice) and *arête* (the sharp ridge a mountain draws
-against the sky). The design follows the second reading: cold alpine light,
-spruce ink, and one warm gesture — text selection and `==highlights==` glow
-like alpenglow.
+Spaced repetition software can be a powerful tool for creating a context in which to think.
 
-## Run it
+I have found spaced repetition works best when it is closely tied to what I'm working on.
+
+Arete is a workspace that combines note-taking with spaced repetition.
+
+## Getting started
+
+1. **Download the app.** It's free, all your files are local, and no data ever
+   leaves your computer.
+   [Download the latest `.dmg`](https://github.com/smejak/arete/releases/latest/download/Arete.dmg),
+   or browse all [releases](https://github.com/smejak/arete/releases).
+   *(The beta is unsigned — on first launch, right-click the app and choose
+   Open. Apple Silicon macOS. Arete also runs fully local in Chrome and Edge.)*
+2. **Create a new folder, or port over your existing notes.** Arete notes are
+   plain `.md` files — pick any folder and it becomes your vault. Coming from
+   Notion? Export as Markdown & CSV, unzip, and open that folder.
+3. **Start using Arete.** To create a card, highlight a piece of text in your
+   notes and right-click.
+
+## Spaced repetition
+
+Arete uses open-source spaced repetition software
+([FSRS](https://github.com/open-spaced-repetition/ts-fsrs)) as well as two new
+features for different card types. I wanted to make flash cards as versatile as
+notes. Arete ships three card types:
+
+- **Classic spaced repetition cards.**
+- **Routine cards** — cards appear regularly at specified times and intervals.
+  Useful for reminders, habits, or just denser card exposure.
+- **Temporary cards** — cards stay in the deck only until a date you set, then
+  archive themselves; the review frequency is adjustable too. Use these for
+  time-bound tasks like talks, short-term projects, or preparing for a meeting.
+
+Cards automatically keep references to the pages and text they were created
+from — open a card's **Refs** to jump back to the exact passages it came from.
+
+## Contributing
+
+Arete is open source under the [MIT License](LICENSE) and welcomes code
+contributions.
+
+It's a [Tauri](https://tauri.app) desktop app wrapping a React + TypeScript web
+app: [TipTap](https://tiptap.dev) (ProseMirror) for the live-markdown editor,
+[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) for scheduling,
+[KaTeX](https://katex.org) for math, and [Zustand](https://github.com/pmndrs/zustand)
+for state. Notes live on disk as plain markdown; cards, review history, and
+analytics live in a hidden `.arete/` folder beside them.
+
+### Run it locally
+
+You'll need [Node.js](https://nodejs.org) 18+. For the desktop build you'll
+also need the [Rust toolchain](https://rustup.rs) (1.88+) and, on macOS, the
+Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
 npm install
-npm run dev      # → http://localhost:5173
+npm run dev          # web app → http://localhost:5173
+npm run tauri:dev    # native desktop window (needs Rust)
 ```
-
-`npm run build` typechecks and produces a static bundle in `dist/`.
-
-## Desktop app (Tauri)
 
 ```sh
-npm run tauri:dev     # native window against the dev server
-npm run tauri:build   # → src-tauri/target/release/bundle/dmg/Arete_*.dmg
+npm run build        # typecheck (tsc) + production web build
+npm run tauri:build  # build the desktop app → src-tauri/target/release/bundle/
 ```
 
-Requires Rust ≥ 1.88 (`rustup`) and Xcode command line tools. The desktop
-build uses the native folder picker and filesystem for vaults (WKWebView has
-no File System Access API), through the same `FolderFS` adapter as the web
-app — `src/lib/fs-adapter.ts` is the only file that knows the difference.
-The bundle is unsigned/ad-hoc signed: on first launch, right-click the app →
-Open (or `xattr -d com.apple.quarantine /Applications/Arete.app`).
+### Where things live
 
-## What it does
+```
+src/
+  components/   UI — editor page, review, cards, insights, sidebar, tabs
+  editor/       TipTap extensions (slash menu, @mentions, math, card refs, block handle)
+  store/        Zustand state (pages, cards + FSRS logs, clock)
+  lib/          srs (FSRS wrapper), vault + markdown (folder sync), history, share
+  styles/       CSS design tokens and component styles
+src-tauri/      Tauri (Rust) shell: window, native file dialogs, filesystem
+```
 
-- **Live markdown** — formatting applies as you type, no preview pane:
-  `#`/`##`/`###` + space for headings, `**bold**`, `*italic*`, `~~strike~~`,
-  `` `code` ``, `==highlight==`, `-` bullets, `1.` numbered, `[]` to-dos,
-  `>` quotes, `---` dividers, ``` for code blocks, smart quotes and
-  autolinked URLs.
-- **Slash menu** — type `/` on any line: headings, lists, to-dos, quote,
-  divider, callout, code block, **new subpage**, **link to page**.
-- **@ mentions** — type `@` mid-sentence to reference any page inline; the
-  chip navigates on click and follows renames. No match? The menu offers to
-  create the page on the spot (as a subpage of the current one).
-- **LaTeX** — `$E=mc^2$` renders inline the moment you close the `$`;
-  `$$` opens a display equation with a live KaTeX preview editor (also
-  `/equation`). Click any equation to edit its source, Obsidian-style.
-- **Text formatting on right-click** — select text and right-click for
-  bold / italic / underline / strikethrough / code / alpenglow, plus
-  New card and Copy.
-- **Block handle** — hover any block for a six-dot handle in the left margin:
-  drag to move the block, or click for a menu (Turn into… text/heading/list/
-  quote/callout/code, New card from block, Duplicate, Delete).
-- **Tabs & history** — browser-style tabs above the topbar (middle-click or ×
-  to close, ⌘-click a sidebar page or "Open in new tab" to spawn one), with
-  per-tab back/forward buttons (⌥⌘← / ⌥⌘→).
-- **Subpage blocks own their pages** — deleting a `/page` block from a
-  document deletes the subpage itself (with a grace period so cut/paste and
-  undo survive). Plain links and mentions never delete anything.
-- **Pages that nest** — infinitely, in a collapsible sidebar tree. Hover a row
-  for expand/actions; drag rows to reorder, drag onto a row to nest inside it.
-  Right-click (or `⋯`) for rename, favorite, duplicate (deep, with subpages),
-  and delete (with confirm).
-- **Search palette** — `⌘K` fuzzy-searches titles and content, shows recents,
-  and doubles as the "link to page" picker.
-- **Page dressing** — emoji icons, eight alpine gradient covers, and a per-page
-  typeface: Default (Schibsted Grotesk), Serif (Literata), Mono (IBM Plex Mono).
-- **Light & dark** — alpine morning / night at altitude; follows your system on
-  first run, toggle in the top bar.
+### Sending a change
 
-## The Anki backbone
+1. Fork the repo and create a branch (`git checkout -b my-change`).
+2. Make your change. Please keep `npm run build` green — it typechecks the
+   whole project.
+3. Open a pull request describing what changed and why. Small, focused PRs are
+   easiest to review.
 
-- **Highlight → card** — select text, right-click, *New card*. The selection is
-  marked as a reference (it moves with your edits), copied to your clipboard
-  for pasting, and a composer opens beside the text. *Add another highlight*
-  ties multiple, separate passages to the same card. Cancel removes the marks.
-- **Card types** — *Spaced* (pure FSRS), *Routine* (every N days/weeks/months —
-  anytime, at fixed times of day, or N sessions spaced hours apart; only
-  correct answers advance the schedule), *Temporary* (N correct per day until a
-  date, then it archives itself — built for talk prep and deadlines).
-- **Review** — from the sidebar, with a live due-count badge. Space reveals,
-  1–4 rate (Anki-style). Every card's *Refs* panel shows the exact live text it
-  came from; *Open* jumps to the page and flashes every highlight for five
-  seconds.
-- **Markdown card fields** — both the front and back of every card are
-  live-markdown editors, exactly like pages: bold/italic, lists, code, and
-  `$LaTeX$` render as you type. Fields are stored as plain markdown, so cards
-  stay searchable, diffable in history, and readable in vault files.
-- **Cards** — browse, search, and filter everything (deck = source page, type,
-  tag, active/archived); edit fronts, backs, tags, and schedules; archive or
-  hard-delete; add standalone cards not tied to any text. Archived cards are
-  kept forever and keep their memory estimate.
-- **Share & export** — the ⋯ menu's *Share & export* zips a page as plain
-  markdown, with toggles for including its subpages and its cards (any card
-  from those pages, plus cards whose highlights point into them). The zip is a
-  miniature vault: unzip it and *Open folder as vault* restores pages and
-  cards on the receiving side.
-- **Insights** — a dashboard of stat tiles (due, streak, retention, fading
-  archived knowledge), a GitHub-style practice heatmap, most-practiced pages,
-  toughest cards, answer speed, and time-of-day patterns — all computed from
-  the append-only review log. FSRS retrievability is the "how well do I know
-  this right now" number, and it keeps decaying after cards are archived, so
-  crammed knowledge visibly fades.
-- **History** — every page mints immutable, dated versions when you pause
-  typing, when cards are created or edited, every five minutes, and when you
-  leave the page (unchanged content mints nothing). Browse and restore from
-  the ⋯ menu; cards keep their own version history in the editor; the whole
-  knowledge base has a timeline under Insights.
+Found a bug or have an idea? Open an issue — that's a contribution too.
 
-## Keys
+## License
 
-| Key | Action |
-| --- | --- |
-| `⌘K` | Search and jump (or pick a page to link) |
-| `⌘\` | Toggle sidebar |
-| `/` | Block menu in the editor |
-| `@` | Mention a page inline (or create one) |
-| `Enter` in title | Drop into the first line of the page |
-| `⌘B / ⌘I / ⌘U / ⌘⇧S` | Inline styles |
-| six-dot handle | Hover a block → drag to move, click for block menu |
-| `Space`, `1–4` | Reveal / rate during review |
-
-## Where your data lives
-
-By default in localStorage, split so hot paths stay small: `arete` (pages,
-tree, favorites, theme), `arete-srs` (cards + review log), and `arete.hist.*`
-(version history + the knowledge-base event feed). One caveat: state is
-per-browser-tab-write — keep one Arete tab open at a time, or the last tab to
-write wins.
-
-**Or in a folder vault** (Obsidian-style): the drive button in the sidebar
-footer connects a folder of your choosing. Every page becomes a plain
-markdown file (frontmatter for icon/cover/font, folders for hierarchy,
-`[[wikilinks]]` for references, `![[…]]` for owned subpages); cards, review
-logs, and history live in a hidden `.arete/` subfolder. Everything mirrors to
-disk as you work, and external edits to the markdown are read back on launch.
-Data never leaves the machine. Built on the File System Access API
-(Chrome/Edge today; the identical layer backs a future desktop build).
-
-**Leaving Notion?** Export your workspace (Settings → Export → Markdown &
-CSV), unzip it, then Vault → “Open folder as vault…” and pick the folder.
-Notion exports are recognized automatically: hashed filenames are cleaned,
-links become wikilinks, databases become list pages, and the first sync
-rewrites the folder as a tidy Arete vault (the original CSVs stay put).
-
-## Stack
-
-Vite · React 18 · TypeScript · TipTap 2 (ProseMirror) for the editor —
-custom extensions for the slash menu (Suggestion plugin), @ mentions, callout,
-page-link and card-reference marks, and a trailing-paragraph guarantee ·
-ts-fsrs (FSRS v5) for memory modeling · zustand (persist) for state · Lucide
-icons · self-hosted fonts via Fontsource.
+MIT © 2026 Jakub Smekal

@@ -3,6 +3,7 @@ name = "arete"
 version = "0.1.0"
 description = "Arete — a quiet local workspace with an Anki backbone"
 authors = ["Jakub Smekal"]
+license = "MIT"
 edition = "2021"
 
 [build-dependencies]

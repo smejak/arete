@@ -2,6 +2,8 @@
   "name": "arete",
   "private": true,
   "version": "0.1.0",
+  "description": "A local-first workspace that combines note-taking with spaced repetition.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
