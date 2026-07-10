@@ -79,7 +79,7 @@ export function TabBar() {
   const active = tabs.find(t => t.id === activeTabId)
 
   return (
-    <div className="tabbar">
+    <div className="tabbar" data-tauri-drag-region="">
       {!sidebarOpen && (
         <button type="button" className="icon-btn" onClick={toggleSidebar} title="Open sidebar (⌘\)">
           <PanelLeftOpen size={16} strokeWidth={1.7} />
@@ -105,7 +105,7 @@ export function TabBar() {
           <ChevronRight size={17} strokeWidth={1.8} />
         </button>
       </div>
-      <div className="tabbar-tabs" role="tablist">
+      <div className="tabbar-tabs" role="tablist" data-tauri-drag-region="">
         {tabs.map(tab => (
           <TabChip key={tab.id} tab={tab} single={tabs.length === 1} />
         ))}

@@ -1544,6 +1544,11 @@
   padding: 8px 12px 0;
 }
 
+.vault-note-sub {
+  padding-top: 8px;
+  color: var(--text-3);
+}
+
 /* ------------------------------ page history ----------------------------- */
 
 .hist-empty {

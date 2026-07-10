@@ -186,7 +186,59 @@ function subscribeStores() {
 
 // ---------------------------------------------------------------------------
 // Load (folder → app)
+//
+// "Open existing vault" accepts more than our own output: any folder of
+// markdown works, and unzipped Notion exports are recognized and normalized
+// on the way in — 32-hex name hashes stripped, relative .md links rewritten
+// to wikilinks, database CSVs turned into list pages. The first sync then
+// writes everything back in clean Arete form.
 // ---------------------------------------------------------------------------
+
+const NOTION_HASH = /\s+[0-9a-f]{32}$/i
+
+function stripNotionName(name: string): string {
+  return name.replace(NOTION_HASH, '').trim()
+}
+
+/** Rewrite relative markdown-file links (Notion's link style) into wikilinks. */
+function normalizeMd(md: string): string {
+  return md
+    .replace(/\[([^\]]+)\]\(([^)]+\.md)\)/g, (_m, _text: string, target: string) => {
+      const base = decodeURIComponent(target.split('/').pop()!.replace(/\.md$/, ''))
+      return `[[${stripNotionName(base)}]]`
+    })
+    .replace(/\[([^\]]+)\]\(([^)]+\.csv)\)/g, (_m, text: string) => `[[${stripNotionName(text)}]]`)
+}
+
+function csvToDoc(csv: string): JSONContent {
+  const rows = csv.split('\n').filter(r => r.trim()).slice(0, 101)
+  const header = rows[0]?.split(',') ?? []
+  const items = rows.slice(1).map(row => {
+    const cells = row.split(',')
+    return {
+      type: 'listItem',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: cells[0] || '—', marks: [{ type: 'bold' }] },
+            ...(cells.length > 1 ? [{ type: 'text', text: '  ·  ' + cells.slice(1).join(' · ') }] : []),
+          ],
+        },
+      ],
+    }
+  })
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: `Imported database (${header.join(', ')})` }],
+      },
+      ...(items.length ? [{ type: 'bulletList', content: items }] : []),
+    ],
+  }
+}
 
 interface RawFile {
   id: string
@@ -195,6 +247,10 @@ interface RawFile {
   meta: Record<string, string>
   body: string
   order: number
+  csv: boolean
+  /** Original on-disk path — becomes the sync cache seed so renames and
+   * normalization replace files instead of duplicating them. */
+  path: string[]
 }
 
 async function collectVaultFiles(
@@ -205,10 +261,12 @@ async function collectVaultFiles(
 ): Promise<void> {
   const entries = await fs.list(dir)
   const mdFiles = entries.filter(e => !e.dir && e.name.endsWith('.md') && !e.name.startsWith('.'))
+  const csvFiles = entries.filter(e => !e.dir && e.name.endsWith('.csv') && !e.name.startsWith('.'))
   const dirs = entries.filter(e => e.dir && !e.name.startsWith('.'))
 
   let idx = 0
-  const idsByBase = new Map<string, string>()
+  const idsByRawBase = new Map<string, string>()
+  const titlesTaken = new Set<string>()
   for (const file of mdFiles) {
     const base = file.name.slice(0, -3)
     const raw = (await fs.read([...dir, file.name])) ?? ''
@@ -221,24 +279,61 @@ async function collectVaultFiles(
       }
     }
     const id = meta['arete-id'] || crypto.randomUUID()
-    idsByBase.set(base, id)
+    const title = stripNotionName(base)
+    idsByRawBase.set(base, id)
+    titlesTaken.add(title.toLowerCase())
     out.push({
       id,
-      title: base,
+      title,
       parentId,
       meta,
       body: raw,
       order: Number.isFinite(Number(meta.order)) ? Number(meta.order) : idx,
+      csv: false,
+      path: [...dir, file.name],
     })
     idx++
   }
 
+  for (const file of csvFiles) {
+    const base = stripNotionName(file.name.replace(/\.csv$/, '').replace(/_all$/, ''))
+    // Skip when a page of the same name already exists here (e.g. our own
+    // earlier conversion of this database).
+    if (titlesTaken.has(base.toLowerCase())) continue
+    const raw = (await fs.read([...dir, file.name])) ?? ''
+    out.push({
+      id: 'csv:' + [...dir, file.name].join('/'), // stable across launches
+      title: base,
+      parentId,
+      meta: {},
+      body: raw,
+      order: idx++,
+      csv: true,
+      path: [...dir, file.name],
+    })
+  }
+
   for (const sub of dirs) {
-    let owner = idsByBase.get(sub.name)
+    let owner = idsByRawBase.get(sub.name)
+    if (!owner) {
+      // Notion folders pair with a hashed page file of the same stripped name.
+      const stripped = stripNotionName(sub.name)
+      const match = out.find(f => f.parentId === parentId && f.title === stripped && !f.csv)
+      owner = match?.id
+    }
     if (!owner) {
       // Folder without a matching page file — represent it as a plain page.
       owner = crypto.randomUUID()
-      out.push({ id: owner, title: sub.name, parentId, meta: {}, body: '', order: idx++ })
+      out.push({
+        id: owner,
+        title: stripNotionName(sub.name),
+        parentId,
+        meta: {},
+        body: '',
+        order: idx++,
+        csv: false,
+        path: [],
+      })
     }
     await collectVaultFiles(fs, [...dir, sub.name], owner, out)
   }
@@ -254,14 +349,17 @@ async function loadVault(fs: FolderFS): Promise<boolean> {
 
     const titleToId = new Map<string, string>()
     for (const file of raw) {
-      const key = file.title.toLowerCase()
+      const key = stripNotionName(file.title).toLowerCase()
       if (!titleToId.has(key)) titleToId.set(key, file.id)
     }
-    const resolve = (title: string) => titleToId.get(title.toLowerCase()) ?? null
+    const resolve = (title: string) =>
+      titleToId.get(stripNotionName(title).toLowerCase()) ?? null
 
     const pages: Record<string, Page> = {}
     for (const file of raw) {
-      const parsed = markdownToDoc(file.body, resolve)
+      const parsed = file.csv
+        ? { meta: {} as Record<string, string>, content: csvToDoc(file.body) }
+        : markdownToDoc(normalizeMd(file.body), resolve)
       const meta = { ...parsed.meta, ...file.meta }
       pages[file.id] = {
         id: file.id,
@@ -275,6 +373,15 @@ async function loadVault(fs: FolderFS): Promise<boolean> {
         createdAt: meta.created ? Date.parse(meta.created) || Date.now() : Date.now(),
         updatedAt: meta.updated ? Date.parse(meta.updated) || Date.now() : Date.now(),
       }
+    }
+
+    // Seed the sync cache with the files as found on disk, so the first sync
+    // renames and normalizes in place instead of leaving stale copies behind.
+    // (CSV originals are deliberately not seeded: they stay untouched on disk
+    // and their pages regenerate from them.)
+    fileCache = new Map()
+    for (const file of raw) {
+      if (file.path.length && !file.csv) fileCache.set(file.path.join('/'), file.body)
     }
 
     const readJson = async <T>(name: string): Promise<T | null> => {
@@ -377,167 +484,4 @@ export async function reconnectVault(): Promise<boolean> {
   await loadVault(fs)
   await runSync()
   return true
-}
-
-// ---------------------------------------------------------------------------
-// Notion import
-// ---------------------------------------------------------------------------
-
-const NOTION_HASH = /\s+[0-9a-f]{32}$/i
-
-function stripNotionName(name: string): string {
-  return name.replace(NOTION_HASH, '').trim()
-}
-
-/** Rewrite Notion's relative markdown links into wikilinks before parsing. */
-function preprocessNotionMd(md: string): string {
-  return md
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // images: dropped
-    .replace(/\[([^\]]+)\]\(([^)]+\.md)\)/g, (_m, _text: string, target: string) => {
-      const base = decodeURIComponent(target.split('/').pop()!.replace(/\.md$/, ''))
-      return `[[${stripNotionName(base)}]]`
-    })
-    .replace(/\[([^\]]+)\]\(([^)]+\.csv)\)/g, (_m, text: string) => `[[${stripNotionName(text)}]]`)
-}
-
-interface NotionFile {
-  title: string
-  parentKey: string | null
-  key: string
-  kind: 'md' | 'csv'
-  text: string
-}
-
-async function collectNotion(
-  fs: FolderFS,
-  dir: string[],
-  parentKey: string | null,
-  out: NotionFile[],
-): Promise<void> {
-  const entries = await fs.list(dir)
-  const dirs: string[] = []
-  for (const entry of entries) {
-    if (!entry.dir && /\.(md|csv)$/.test(entry.name)) {
-      const kind = entry.name.endsWith('.md') ? 'md' : 'csv'
-      const base = stripNotionName(entry.name.replace(/\.(md|csv)$/, '').replace(/_all$/, ''))
-      const text = (await fs.read([...dir, entry.name])) ?? ''
-      out.push({ title: base, parentKey, key: [...dir, entry.name].join('/'), kind, text })
-    } else if (entry.dir) {
-      dirs.push(entry.name)
-    }
-  }
-  for (const name of dirs) {
-    const base = stripNotionName(name)
-    // A folder's pages belong to the page whose file shares its name.
-    const owner = out.find(f => f.parentKey === parentKey && f.title === base)
-    await collectNotion(fs, [...dir, name], owner ? owner.key : parentKey, out)
-  }
-}
-
-function csvToDoc(csv: string): JSONContent {
-  const rows = csv.split('\n').filter(r => r.trim()).slice(0, 101)
-  const header = rows[0]?.split(',') ?? []
-  const items = rows.slice(1).map(row => {
-    const cells = row.split(',')
-    return {
-      type: 'listItem',
-      content: [
-        {
-          type: 'paragraph',
-          content: [
-            { type: 'text', text: cells[0] || '—', marks: [{ type: 'bold' }] },
-            ...(cells.length > 1 ? [{ type: 'text', text: '  ·  ' + cells.slice(1).join(' · ') }] : []),
-          ],
-        },
-      ],
-    }
-  })
-  return {
-    type: 'doc',
-    content: [
-      {
-        type: 'paragraph',
-        content: [{ type: 'text', text: `Imported Notion database (${header.join(', ')})` }],
-      },
-      ...(items.length ? [{ type: 'bulletList', content: items }] : []),
-    ],
-  }
-}
-
-/** Import an unzipped Notion export folder as a new page subtree.
- * Resolves null when the user cancels the picker. */
-export async function importNotionExport(): Promise<{ pages: number } | { error: string } | null> {
-  const picked = await pickFolderWithPath()
-  if (!picked) return null
-  const files: NotionFile[] = []
-  await collectNotion(picked.fs, [], null, files)
-  if (!files.length) return { error: 'No markdown or CSV files found in that folder.' }
-
-  const now = Date.now()
-  const rootId = crypto.randomUUID()
-  const idByKey = new Map<string, string>()
-  files.forEach(f => idByKey.set(f.key, crypto.randomUUID()))
-  const titleToId = new Map<string, string>()
-  files.forEach(f => {
-    const key = f.title.toLowerCase()
-    if (!titleToId.has(key)) titleToId.set(key, idByKey.get(f.key)!)
-  })
-  const resolve = (title: string) => titleToId.get(stripNotionName(title).toLowerCase()) ?? null
-
-  const newPages: Record<string, Page> = {
-    [rootId]: {
-      id: rootId,
-      title: 'Notion import',
-      icon: '📥',
-      cover: null,
-      parentId: null,
-      order: 999,
-      font: 'sans',
-      content: {
-        type: 'doc',
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: `Imported ${files.length} page${files.length === 1 ? '' : 's'} from a Notion export on ${new Date().toLocaleDateString()}.`,
-              },
-            ],
-          },
-        ],
-      },
-      createdAt: now,
-      updatedAt: now,
-    },
-  }
-
-  const siblingsSeen = new Map<string, number>()
-  for (const file of files) {
-    const id = idByKey.get(file.key)!
-    const parentId = file.parentKey ? idByKey.get(file.parentKey)! : rootId
-    const order = siblingsSeen.get(parentId) ?? 0
-    siblingsSeen.set(parentId, order + 1)
-    const content =
-      file.kind === 'csv'
-        ? csvToDoc(file.text)
-        : markdownToDoc(preprocessNotionMd(file.text), resolve).content
-    newPages[id] = {
-      id,
-      title: file.title,
-      icon: null,
-      cover: null,
-      parentId,
-      order,
-      font: 'sans',
-      content,
-      createdAt: now,
-      updatedAt: now,
-    }
-  }
-
-  useStore.setState(s => ({ pages: { ...s.pages, ...newPages } }))
-  useStore.getState().openPage(rootId)
-  scheduleVaultSync()
-  return { pages: files.length }
 }

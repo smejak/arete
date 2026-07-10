@@ -5,8 +5,17 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 10px 0;
+  padding: 5px 10px;
   min-width: 0;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Desktop app: traffic lights overlay the window's top-left corner. */
+.app.is-tauri .tabbar {
+  padding-left: 84px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .tab-nav {
@@ -60,7 +69,7 @@
 }
 
 .tab.is-active {
-  background: var(--bg-pop);
+  background: var(--bg);
   border-color: var(--border);
   color: var(--text);
   box-shadow: 0 1px 2px rgba(15, 25, 20, 0.07);

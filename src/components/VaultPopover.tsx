@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { Download, FolderOpen, HardDrive, RefreshCw, Unplug } from 'lucide-react'
+import { FolderOpen, HardDrive, RefreshCw, Unplug } from 'lucide-react'
 import {
   createVaultFromWorkspace,
   disconnectVault,
-  importNotionExport,
   openVault,
   reconnectVault,
   useVault,
@@ -82,9 +81,6 @@ export function VaultButton() {
                 <code>.arete/</code>. Edits made outside Arete are read on the next launch.
               </div>
               <div className="vault-actions">
-                <button type="button" className="btn" disabled={busy} onClick={() => run(importNotionAction)}>
-                  <Download size={13} strokeWidth={1.9} /> Import from Notion…
-                </button>
                 <button type="button" className="btn" disabled={busy} onClick={() => run(disconnectVault)}>
                   <Unplug size={13} strokeWidth={1.9} /> Disconnect
                 </button>
@@ -114,9 +110,9 @@ export function VaultButton() {
           ) : (
             <>
               <div className="vault-note">
-                Keep everything as plain files in a folder you choose — pages as markdown,
-                cards and history in a hidden <code>.arete/</code> subfolder. Data never leaves
-                this machine.
+                Keep everything as plain files in a folder you choose — pages as markdown, cards
+                and history in a hidden <code>.arete/</code> subfolder. Data never leaves this
+                machine.
               </div>
               <div className="vault-actions vault-actions-col">
                 <button
@@ -134,18 +130,20 @@ export function VaultButton() {
                   onClick={() => {
                     if (!armedOpen) {
                       setArmedOpen(true)
-                      setMsg('Opening a vault replaces the current workspace — click again to continue.')
+                      setMsg('Opening a folder replaces the current workspace — click again to continue.')
                       return
                     }
                     void run(openVault)
                   }}
                 >
                   <FolderOpen size={13} strokeWidth={1.9} />
-                  {armedOpen ? 'Yes, open and replace' : 'Open existing vault…'}
+                  {armedOpen ? 'Yes, open and replace' : 'Open folder as vault…'}
                 </button>
-                <button type="button" className="btn" disabled={busy} onClick={() => run(importNotionAction)}>
-                  <Download size={13} strokeWidth={1.9} /> Import from Notion…
-                </button>
+              </div>
+              <div className="vault-note vault-note-sub">
+                “Open folder” takes an existing Arete vault, any folder of markdown, or an
+                unzipped Notion export (Settings → Export → Markdown &amp; CSV) — Notion names and
+                links are cleaned up automatically.
               </div>
             </>
           )}
@@ -156,11 +154,4 @@ export function VaultButton() {
       )}
     </>
   )
-}
-
-async function importNotionAction(): Promise<string | null> {
-  const result = await importNotionExport()
-  if (result === null) return null // picker cancelled
-  if ('error' in result) return result.error
-  return `Imported ${result.pages} page${result.pages === 1 ? '' : 's'} — see “Notion import” in the sidebar.`
 }

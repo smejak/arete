@@ -3,6 +3,8 @@ import { useStore } from './store/store'
 import { useSrsStore } from './store/srs-store'
 import { useClock } from './store/clock'
 import { childrenOf } from './lib/tree'
+import { cx } from './lib/util'
+import { isTauriEnv } from './lib/fs-adapter'
 import { recordPageVersion } from './lib/history'
 import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
@@ -93,20 +95,25 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app" data-sidebar={sidebarOpen ? 'open' : 'closed'}>
-      <div className="sidebar-wrap">
-        <Sidebar />
+    <div
+      className={cx('app', isTauriEnv() && 'is-tauri')}
+      data-sidebar={sidebarOpen ? 'open' : 'closed'}
+    >
+      <TabBar />
+      <div className="app-body">
+        <div className="sidebar-wrap">
+          <Sidebar />
+        </div>
+        <main className="main">
+          <Topbar page={page} />
+          {view === 'page' && page && (
+            <PageView key={page.id + ':' + restoreNonce} pageId={page.id} />
+          )}
+          {view === 'review' && <ReviewView />}
+          {view === 'cards' && <CardsView />}
+          {view === 'insights' && <InsightsView />}
+        </main>
       </div>
-      <main className="main">
-        <TabBar />
-        <Topbar page={page} />
-        {view === 'page' && page && (
-          <PageView key={page.id + ':' + restoreNonce} pageId={page.id} />
-        )}
-        {view === 'review' && <ReviewView />}
-        {view === 'cards' && <CardsView />}
-        {view === 'insights' && <InsightsView />}
-      </main>
       {searchOpen && <SearchModal />}
     </div>
   )
