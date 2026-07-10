@@ -43,14 +43,22 @@ export const PageLink = Node.create({
   selectable: true,
 
   addAttributes() {
-    return { pageId: { default: null } }
+    return {
+      pageId: { default: null },
+      /** True when this block *is* the subpage (created via /page): removing
+       * the block deletes the page. Plain links/mentions stay false. */
+      owner: { default: false },
+    }
   },
 
   parseHTML() {
     return [
       {
         tag: 'div[data-type="page-link"]',
-        getAttrs: el => ({ pageId: (el as HTMLElement).dataset.pageId ?? null }),
+        getAttrs: el => ({
+          pageId: (el as HTMLElement).dataset.pageId ?? null,
+          owner: (el as HTMLElement).dataset.owner === 'true',
+        }),
       },
     ]
   },
@@ -61,6 +69,7 @@ export const PageLink = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-type': 'page-link',
         'data-page-id': node.attrs.pageId,
+        'data-owner': node.attrs.owner ? 'true' : undefined,
       }),
     ]
   },

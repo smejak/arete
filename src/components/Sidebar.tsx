@@ -1,8 +1,13 @@
 import { useMemo } from 'react'
-import { PanelLeftClose, Plus, Search } from 'lucide-react'
+import { BarChart3, GraduationCap, Layers, PanelLeftClose, Plus, Search } from 'lucide-react'
 import { useStore } from '../store/store'
+import { useSrsStore } from '../store/srs-store'
+import { useClock } from '../store/clock'
+import { isDue } from '../lib/srs'
 import { childrenOf } from '../lib/tree'
+import { cx } from '../lib/util'
 import { PageTree, RootDropZone, TreeDndProvider } from './PageTree'
+import { VaultButton } from './VaultPopover'
 
 function RidgeMark() {
   return (
@@ -24,9 +29,18 @@ export function Sidebar() {
   const toggleSidebar = useStore(s => s.toggleSidebar)
   const setSearchOpen = useStore(s => s.setSearchOpen)
   const createPage = useStore(s => s.createPage)
+  const view = useStore(s => s.view)
+  const setView = useStore(s => s.setView)
+  const nowTick = useClock(s => s.nowTick)
+  const cards = useSrsStore(s => s.cards)
 
   const roots = useMemo(() => childrenOf(pages, null), [pages])
   const favs = useMemo(() => favorites.filter(id => pages[id]), [favorites, pages])
+
+  const dueCount = useMemo(() => {
+    const now = new Date(nowTick)
+    return Object.values(cards).filter(c => isDue(c, now)).length
+  }, [cards, nowTick])
 
   return (
     <aside className="sidebar">
@@ -45,6 +59,34 @@ export function Sidebar() {
         <span>Search</span>
         <kbd className="kbd">⌘K</kbd>
       </button>
+
+      <nav className="sidebar-nav">
+        <button
+          type="button"
+          className={cx('nav-row', view === 'review' && 'is-active')}
+          onClick={() => setView('review')}
+        >
+          <GraduationCap size={15} strokeWidth={1.8} />
+          <span>Review</span>
+          {dueCount > 0 && <span className="due-badge">{dueCount}</span>}
+        </button>
+        <button
+          type="button"
+          className={cx('nav-row', view === 'cards' && 'is-active')}
+          onClick={() => setView('cards')}
+        >
+          <Layers size={15} strokeWidth={1.8} />
+          <span>Cards</span>
+        </button>
+        <button
+          type="button"
+          className={cx('nav-row', view === 'insights' && 'is-active')}
+          onClick={() => setView('insights')}
+        >
+          <BarChart3 size={15} strokeWidth={1.8} />
+          <span>Insights</span>
+        </button>
+      </nav>
 
       <TreeDndProvider>
         <div className="sidebar-scroll" role="tree">
@@ -65,6 +107,7 @@ export function Sidebar() {
           <Plus size={16} strokeWidth={1.8} />
           <span>New page</span>
         </button>
+        <VaultButton />
       </div>
     </aside>
   )

@@ -24,12 +24,15 @@
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
     "@tiptap/suggestion": "^2.11.5",
+    "katex": "^0.17.0",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "ts-fsrs": "^5.4.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.8",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

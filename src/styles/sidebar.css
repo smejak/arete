@@ -257,19 +257,42 @@
 .sidebar-foot {
   border-top: 1px solid var(--border);
   padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .new-page {
   display: flex;
   align-items: center;
   gap: 9px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 7px 8px;
   border-radius: 7px;
   color: var(--text-2);
   font-size: 14px;
   font-weight: 500;
   transition: background 0.12s ease, color 0.12s ease;
+}
+
+.vault-btn {
+  position: relative;
+  color: var(--text-3);
+}
+
+.vault-dot {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.vault-dot.is-warn {
+  background: var(--code-inline);
 }
 
 .new-page:hover {

@@ -8,6 +8,7 @@ import {
 import {
   ChevronRight,
   Copy,
+  ExternalLink,
   FilePlus2,
   FileText,
   MoreHorizontal,
@@ -156,7 +157,13 @@ function TreeItem({
           dnd?.setOver(null)
           if (d && o?.key === id) movePage(d, { type: o.zone, id })
         }}
-        onClick={() => openPage(id)}
+        onClick={e => {
+          if (e.metaKey || e.ctrlKey) {
+            useStore.getState().newTab({ view: 'page', pageId: id })
+          } else {
+            openPage(id)
+          }
+        }}
         onContextMenu={e => {
           e.preventDefault()
           setMenuAt({ x: e.clientX, y: e.clientY })
@@ -269,6 +276,14 @@ function TreeItemMenu({
       ) : (
         <Menu
           entries={[
+            {
+              icon: ExternalLink,
+              label: 'Open in new tab',
+              onSelect: () => {
+                onClose()
+                useStore.getState().newTab({ view: 'page', pageId: id })
+              },
+            },
             {
               icon: FilePlus2,
               label: 'New subpage',

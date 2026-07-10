@@ -13,6 +13,8 @@ import {
   TextQuote,
   Minus,
   Lightbulb,
+  Sigma,
+  Radical,
   SquareCode,
   FilePlus2,
   Link as LinkIcon,
@@ -165,6 +167,25 @@ const ITEMS: SlashItem[] = [
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
   },
   {
+    id: 'math-block',
+    title: 'Equation',
+    description: 'Display LaTeX, KaTeX-rendered',
+    icon: Sigma,
+    keywords: ['latex', 'math', 'katex', '$$', 'formula'],
+    section: 'Blocks',
+    run: (editor, range) => insertBlock(editor, range, { type: 'mathBlock', attrs: { latex: '' } }),
+  },
+  {
+    id: 'math-inline',
+    title: 'Inline equation',
+    description: 'Math that flows with text',
+    icon: Radical,
+    keywords: ['latex', 'math', '$', 'inline'],
+    section: 'Blocks',
+    run: (editor, range) =>
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'mathInline', attrs: { latex: '' } }).run(),
+  },
+  {
     id: 'page',
     title: 'New subpage',
     description: 'Create a page inside this one',
@@ -174,7 +195,7 @@ const ITEMS: SlashItem[] = [
     run: (editor, range) => {
       const store = useStore.getState()
       const id = store.createPage({ parentId: store.activePageId, navigate: false })
-      insertBlock(editor, range, { type: 'pageLink', attrs: { pageId: id } })
+      insertBlock(editor, range, { type: 'pageLink', attrs: { pageId: id, owner: true } })
       // Navigate after the transaction settles so the editor unmounts cleanly.
       requestAnimationFrame(() => useStore.getState().openPage(id, { focusTitle: true }))
     },

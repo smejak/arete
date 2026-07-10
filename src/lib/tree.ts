@@ -49,6 +49,9 @@ export function inSubtree(pages: Pages, id: string, rootId: string): boolean {
 export function extractText(node: JSONContent | null | undefined): string {
   if (!node) return ''
   let s = node.text ?? ''
+  if ((node.type === 'mathInline' || node.type === 'mathBlock') && typeof node.attrs?.latex === 'string') {
+    s += (s ? ' ' : '') + node.attrs.latex
+  }
   for (const c of node.content ?? []) {
     const t = extractText(c)
     if (t) s += (s ? ' ' : '') + t

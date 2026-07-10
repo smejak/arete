@@ -1,10 +1,17 @@
 import { useEffect } from 'react'
 import { useStore } from './store/store'
+import { useSrsStore } from './store/srs-store'
+import { useClock } from './store/clock'
 import { childrenOf } from './lib/tree'
+import { recordPageVersion } from './lib/history'
 import { Sidebar } from './components/Sidebar'
+import { TabBar } from './components/TabBar'
 import { Topbar } from './components/Topbar'
 import { PageView } from './components/PageView'
 import { SearchModal } from './components/SearchModal'
+import { ReviewView } from './components/ReviewView'
+import { CardsView } from './components/CardsView'
+import { InsightsView } from './components/InsightsView'
 
 export default function App() {
   const theme = useStore(s => s.theme)
@@ -16,6 +23,8 @@ export default function App() {
   const createPage = useStore(s => s.createPage)
   const toggleSidebar = useStore(s => s.toggleSidebar)
   const setSearchOpen = useStore(s => s.setSearchOpen)
+  const view = useStore(s => s.view)
+  const restoreNonce = useStore(s => s.restoreNonce)
 
   const page = activePageId ? pages[activePageId] ?? null : null
 
@@ -23,7 +32,7 @@ export default function App() {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
-  // Self-heal: always have a page to show.
+  // Self-heal: always have a page to show, and at least one tab.
   useEffect(() => {
     if (!page) {
       const first = childrenOf(pages, null)[0]
@@ -31,6 +40,11 @@ export default function App() {
       else createPage({})
     }
   }, [page, pages, openPage, createPage])
+
+  useEffect(() => {
+    useStore.getState().ensureTabs()
+    void import('./lib/vault').then(v => v.tryRestoreVault())
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,11 +55,42 @@ export default function App() {
       } else if (e.key === '\\') {
         e.preventDefault()
         toggleSidebar()
+      } else if (e.key === 'ArrowLeft' && e.altKey) {
+        // ⌥⌘← — ⌘[ belongs to the browser's own Back and can't be claimed
+        e.preventDefault()
+        useStore.getState().goBack()
+      } else if (e.key === 'ArrowRight' && e.altKey) {
+        e.preventDefault()
+        useStore.getState().goForward()
+      } else if (e.key.toLowerCase() === 't' && e.altKey) {
+        e.preventDefault()
+        useStore.getState().newTab()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [setSearchOpen, toggleSidebar])
+
+  // Minute clock: refreshes due counts and auto-archives expired temp cards.
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      useClock.getState().tick()
+      useSrsStore.getState().sweep()
+    }, 60_000)
+    return () => window.clearInterval(t)
+  }, [])
+
+  // Fixed-interval history saves (no-op guard keeps unchanged pages free).
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      const s = useStore.getState()
+      if (s.view === 'page' && s.activePageId) {
+        const p = s.pages[s.activePageId]
+        if (p) recordPageVersion(p, 'interval')
+      }
+    }, 300_000)
+    return () => window.clearInterval(t)
+  }, [])
 
   return (
     <div className="app" data-sidebar={sidebarOpen ? 'open' : 'closed'}>
@@ -53,8 +98,14 @@ export default function App() {
         <Sidebar />
       </div>
       <main className="main">
+        <TabBar />
         <Topbar page={page} />
-        {page && <PageView key={page.id} pageId={page.id} />}
+        {view === 'page' && page && (
+          <PageView key={page.id + ':' + restoreNonce} pageId={page.id} />
+        )}
+        {view === 'review' && <ReviewView />}
+        {view === 'cards' && <CardsView />}
+        {view === 'insights' && <InsightsView />}
       </main>
       {searchOpen && <SearchModal />}
     </div>

@@ -400,9 +400,114 @@
   text-decoration: none;
 }
 
+/* ---------------------------------- math ---------------------------------- */
+
+.math-inline {
+  display: inline;
+  padding: 1px 3px;
+  margin: 0 -1px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.math-inline:hover {
+  background: var(--bg-hover);
+}
+
+.math-inline.is-selected {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.math-empty {
+  color: var(--text-3);
+  font-style: italic;
+  font-size: 0.9em;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.math-block {
+  margin: 8px 0;
+  padding: 16px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 1.04em;
+  overflow-x: auto;
+  transition: background 0.12s ease;
+}
+
+.math-block:hover {
+  background: var(--bg-hover);
+}
+
+.math-block.is-selected {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.math-block .math-empty {
+  display: inline-block;
+  padding: 4px 10px;
+}
+
+.math-block-inner {
+  display: block;
+}
+
+.math-editor {
+  width: 400px;
+  padding: 10px 12px 9px;
+}
+
+.math-preview {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px 12px;
+  overflow-x: auto;
+}
+
+.math-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  resize: vertical;
+}
+
+.math-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.math-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 7px;
+}
+
 /* ------------------------------- placeholder ------------------------------ */
 
-.tiptap .is-empty::before {
+/* Paragraphs and headings only — container nodes (quotes, list items,
+   callouts) are also marked is-empty, and a second ::before there renders
+   the text doubled and displaces flex layouts like to-do checkboxes. */
+.tiptap p.is-empty::before,
+.tiptap h1.is-empty::before,
+.tiptap h2.is-empty::before,
+.tiptap h3.is-empty::before {
   content: attr(data-placeholder);
   color: var(--text-3);
   opacity: 0.65;

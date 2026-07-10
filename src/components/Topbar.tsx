@@ -1,9 +1,12 @@
 import { Fragment, useState } from 'react'
 import {
+  BarChart3,
   Copy,
+  GraduationCap,
+  History,
+  Layers,
   Moon,
   MoreHorizontal,
-  PanelLeftOpen,
   Star,
   StarOff,
   Sun,
@@ -14,6 +17,13 @@ import type { FontKey, Page } from '../store/types'
 import { ancestorsOf, descendantsOf, wordCount } from '../lib/tree'
 import { cx, fmtRelative } from '../lib/util'
 import { Menu, Popover } from './Popover'
+import { PageHistoryModal } from './PageHistoryModal'
+
+const VIEW_META = {
+  review: { icon: GraduationCap, label: 'Review' },
+  cards: { icon: Layers, label: 'Cards' },
+  insights: { icon: BarChart3, label: 'Insights' },
+} as const
 
 const FONTS: { key: FontKey; label: string }[] = [
   { key: 'sans', label: 'Default' },
@@ -23,8 +33,6 @@ const FONTS: { key: FontKey; label: string }[] = [
 
 export function Topbar({ page }: { page: Page | null }) {
   const pages = useStore(s => s.pages)
-  const sidebarOpen = useStore(s => s.sidebarOpen)
-  const toggleSidebar = useStore(s => s.toggleSidebar)
   const theme = useStore(s => s.theme)
   const toggleTheme = useStore(s => s.toggleTheme)
   const openPage = useStore(s => s.openPage)
@@ -34,11 +42,16 @@ export function Topbar({ page }: { page: Page | null }) {
   const duplicatePage = useStore(s => s.duplicatePage)
   const deletePage = useStore(s => s.deletePage)
 
+  const view = useStore(s => s.view)
   const [menuAt, setMenuAt] = useState<DOMRect | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [overflowAt, setOverflowAt] = useState<DOMRect | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
-  const trail = page ? [...ancestorsOf(pages, page.id), page] : []
+  const inPageView = view === 'page'
+  const viewMeta = !inPageView ? VIEW_META[view] : null
+
+  const trail = page && inPageView ? [...ancestorsOf(pages, page.id), page] : []
   const compress = trail.length > 3
   const visible = compress ? [trail[0], ...trail.slice(-2)] : trail
   const hidden = compress ? trail.slice(1, -2) : []
@@ -54,15 +67,11 @@ export function Topbar({ page }: { page: Page | null }) {
   return (
     <header className="topbar">
       <div className="topbar-side">
-        {!sidebarOpen && (
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={toggleSidebar}
-            title="Open sidebar (⌘\)"
-          >
-            <PanelLeftOpen size={16} strokeWidth={1.7} />
-          </button>
+        {viewMeta && (
+          <span className="crumb is-current view-crumb">
+            <viewMeta.icon size={14} strokeWidth={1.8} />
+            <span className="crumb-title">{viewMeta.label}</span>
+          </span>
         )}
         <nav className="crumbs" aria-label="Breadcrumb">
           {visible.map((p, i) => (
@@ -106,7 +115,7 @@ export function Topbar({ page }: { page: Page | null }) {
             <Moon size={16} strokeWidth={1.7} />
           )}
         </button>
-        {page && (
+        {page && inPageView && (
           <button
             type="button"
             className="icon-btn"
@@ -117,6 +126,10 @@ export function Topbar({ page }: { page: Page | null }) {
           </button>
         )}
       </div>
+
+      {historyOpen && page && (
+        <PageHistoryModal pageId={page.id} onClose={() => setHistoryOpen(false)} />
+      )}
 
       {overflowAt && (
         <Popover anchor={overflowAt} onClose={() => setOverflowAt(null)}>
@@ -192,6 +205,14 @@ export function Topbar({ page }: { page: Page | null }) {
                     onSelect: () => {
                       closeMenu()
                       duplicatePage(page.id)
+                    },
+                  },
+                  {
+                    icon: History,
+                    label: 'Page history',
+                    onSelect: () => {
+                      closeMenu()
+                      setHistoryOpen(true)
                     },
                   },
                   { kind: 'sep' },

@@ -2,20 +2,62 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor, JSONContent } from '@tiptap/core'
 import { Selection } from '@tiptap/pm/state'
-import { Image as ImageIcon, Smile } from 'lucide-react'
+import type { Node as PMNode } from '@tiptap/pm/model'
+import {
+  Bold,
+  Code,
+  Copy,
+  Highlighter,
+  Image as ImageIcon,
+  Italic,
+  Smile,
+  Sparkles,
+  Strikethrough,
+  Underline,
+} from 'lucide-react'
 import { useStore } from '../store/store'
+import { useSrsStore } from '../store/srs-store'
 import { buildExtensions } from '../editor/extensions'
 import { COVERS, randomCover } from '../lib/covers'
 import { randomEmoji } from '../lib/emoji'
 import { cx } from '../lib/util'
+import { recordPageVersion } from '../lib/history'
+import { applyCardRefMark, flashCardRefs, removeCardRefMarks } from '../lib/refs'
 import { EmojiPicker } from './EmojiPicker'
 import { CoverPicker } from './CoverPicker'
 import { SlashMenu, useSuggestionMenu } from './SlashMenu'
 import { MentionMenu } from './MentionMenu'
+import { Menu, Popover } from './Popover'
+import { CardComposer, parseTags, type CardDraft } from './CardComposer'
 import type { SlashItem } from '../editor/SlashCommand'
 import type { MentionEntry } from '../editor/MentionCommand'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+/** Subpage blocks owned by this doc (created via /page). */
+function scanOwnedPages(doc: PMNode): Set<string> {
+  const owned = new Set<string>()
+  doc.descendants(node => {
+    if (node.type.name === 'pageLink' && node.attrs.owner && node.attrs.pageId) {
+      owned.add(node.attrs.pageId as string)
+    }
+  })
+  return owned
+}
+
+const FORMATS: {
+  name: string
+  title: string
+  icon: typeof Bold
+  run: (editor: Editor) => void
+}[] = [
+  { name: 'bold', title: 'Bold (⌘B)', icon: Bold, run: e => e.chain().focus().toggleBold().run() },
+  { name: 'italic', title: 'Italic (⌘I)', icon: Italic, run: e => e.chain().focus().toggleItalic().run() },
+  { name: 'underline', title: 'Underline (⌘U)', icon: Underline, run: e => e.chain().focus().toggleUnderline().run() },
+  { name: 'strike', title: 'Strikethrough (⌘⇧S)', icon: Strikethrough, run: e => e.chain().focus().toggleStrike().run() },
+  { name: 'code', title: 'Code (⌘E)', icon: Code, run: e => e.chain().focus().toggleCode().run() },
+  { name: 'highlight', title: 'Alpenglow highlight', icon: Highlighter, run: e => e.chain().focus().toggleHighlight().run() },
+]
 
 /**
  * Focus the editor body synchronously. TipTap's own focus() defers the DOM
@@ -29,6 +71,20 @@ function focusEditorAt(editor: Editor, where: 'start' | 'end') {
   view.focus()
 }
 
+interface SelMenuState {
+  at: { x: number; y: number }
+  from: number
+  to: number
+  text: string
+}
+
+interface ComposerState {
+  cardId: string
+  refs: { refId: string; snapshot: string }[]
+  top: number
+  pageRight: number
+}
+
 export function PageView({ pageId }: { pageId: string }) {
   const page = useStore(s => s.pages[pageId])
   const updateTitle = useStore(s => s.updateTitle)
@@ -36,11 +92,22 @@ export function PageView({ pageId }: { pageId: string }) {
   const setCover = useStore(s => s.setCover)
   const pendingFocusId = useStore(s => s.pendingFocusId)
   const clearPendingFocus = useStore(s => s.clearPendingFocus)
+  const flash = useStore(s => s.flash)
+  const clearFlash = useStore(s => s.clearFlash)
 
   const [title, setTitle] = useState(page?.title ?? '')
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pageElRef = useRef<HTMLDivElement>(null)
   const [iconPicker, setIconPicker] = useState<DOMRect | null>(null)
   const [coverPicker, setCoverPicker] = useState<DOMRect | null>(null)
+
+  const [selMenu, setSelMenu] = useState<SelMenuState | null>(null)
+  const [composer, setComposer] = useState<ComposerState | null>(null)
+  const [capturing, setCapturing] = useState(false)
+  const composerRef = useRef<ComposerState | null>(null)
+  composerRef.current = composer
+  const createdRef = useRef(false)
 
   const [slashView, slashSuggestion] = useSuggestionMenu<SlashItem>()
   const [mentionView, mentionSuggestion] = useSuggestionMenu<MentionEntry>()
@@ -53,6 +120,9 @@ export function PageView({ pageId }: { pageId: string }) {
   const jsonRef = useRef<JSONContent | null>(null)
   const dirtyRef = useRef(false)
   const timerRef = useRef<number | undefined>(undefined)
+  const histTimerRef = useRef<number | undefined>(undefined)
+  const ownedRef = useRef<Set<string>>(new Set())
+  const pendingOwnedDeleteRef = useRef<Map<string, number>>(new Map())
 
   const editor = useEditor({
     extensions,
@@ -68,17 +138,73 @@ export function PageView({ pageId }: { pageId: string }) {
           useStore.getState().updateContent(pageId, jsonRef.current)
         }
       }, 400)
+      // History versions mint on idle — a burst of typing coalesces into one.
+      window.clearTimeout(histTimerRef.current)
+      histTimerRef.current = window.setTimeout(() => {
+        const p = useStore.getState().pages[pageId]
+        if (p) recordPageVersion(p, 'idle')
+      }, 5000)
+      // Deleting an owning subpage block deletes the subpage itself, after a
+      // short grace period so cut→paste and undo survive.
+      const owned = scanOwnedPages(editor.state.doc)
+      ownedRef.current.forEach(id => {
+        if (!owned.has(id) && !pendingOwnedDeleteRef.current.has(id)) {
+          const timer = window.setTimeout(() => {
+            pendingOwnedDeleteRef.current.delete(id)
+            const st = useStore.getState()
+            if (st.pages[id] && st.pages[id].parentId === pageId) st.deletePage(id)
+          }, 2500)
+          pendingOwnedDeleteRef.current.set(id, timer)
+        }
+      })
+      owned.forEach(id => {
+        const timer = pendingOwnedDeleteRef.current.get(id)
+        if (timer !== undefined) {
+          window.clearTimeout(timer)
+          pendingOwnedDeleteRef.current.delete(id)
+        }
+      })
+      ownedRef.current = owned
     },
   })
 
-  // Flush any unsaved edits when navigating away.
+  // Baseline set of owned subpage blocks, once the editor exists.
+  useEffect(() => {
+    if (editor) ownedRef.current = scanOwnedPages(editor.state.doc)
+  }, [editor])
+
+  // Navigating away with deletions still pending: apply them now.
+  useEffect(
+    () => () => {
+      pendingOwnedDeleteRef.current.forEach((timer, id) => {
+        window.clearTimeout(timer)
+        const st = useStore.getState()
+        if (st.pages[id] && st.pages[id].parentId === pageId) st.deletePage(id)
+      })
+      pendingOwnedDeleteRef.current.clear()
+    },
+    [pageId],
+  )
+
+  const flushContent = () => {
+    window.clearTimeout(timerRef.current)
+    if (dirtyRef.current && jsonRef.current) {
+      dirtyRef.current = false
+      useStore.getState().updateContent(pageId, jsonRef.current)
+    }
+  }
+
+  // Flush unsaved edits + mint a history version when navigating away.
   useEffect(
     () => () => {
       window.clearTimeout(timerRef.current)
+      window.clearTimeout(histTimerRef.current)
       if (dirtyRef.current && jsonRef.current) {
         dirtyRef.current = false
         useStore.getState().updateContent(pageId, jsonRef.current)
       }
+      const p = useStore.getState().pages[pageId]
+      if (p) recordPageVersion(p, 'switch')
     },
     [pageId],
   )
@@ -101,6 +227,70 @@ export function PageView({ pageId }: { pageId: string }) {
       clearPendingFocus()
     }
   }, [pendingFocusId, pageId, clearPendingFocus])
+
+  // Arriving from a card's "Refs" link: flash every highlight for 5s. The
+  // editor paints asynchronously after mount, so poll briefly until the
+  // marked spans exist.
+  useEffect(() => {
+    if (!flash || flash.pageId !== pageId || !editor) return
+    let tries = 0
+    let timer: number
+    const attempt = () => {
+      const container = scrollRef.current
+      const found = container ? flashCardRefs(container, flash.cardId) : false
+      if (!found && tries++ < 25) {
+        timer = window.setTimeout(attempt, 120)
+      } else {
+        clearFlash()
+      }
+    }
+    timer = window.setTimeout(attempt, 60)
+    return () => window.clearTimeout(timer)
+  }, [flash, pageId, editor, clearFlash])
+
+  // "Add another highlight": capture the next selection in the page.
+  useEffect(() => {
+    if (!capturing || !editor) return
+    const dom = editor.view.dom
+    let done = false // one capture per arming — double-click fires two mouseups
+    const onUp = () => {
+      window.setTimeout(() => {
+        if (done) return
+        const c = composerRef.current
+        if (!c) return
+        const { from, to } = editor.state.selection
+        if (from === to) return
+        const text = editor.state.doc.textBetween(from, to, '\n').trim()
+        if (!text) return
+        done = true
+        const refId = crypto.randomUUID()
+        applyCardRefMark(editor, from, to, c.cardId, refId)
+        navigator.clipboard?.writeText(text).catch(() => {})
+        setComposer(prev => prev && { ...prev, refs: [...prev.refs, { refId, snapshot: text }] })
+        setCapturing(false)
+      }, 0)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCapturing(false)
+    }
+    dom.addEventListener('mouseup', onUp)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      dom.removeEventListener('mouseup', onUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [capturing, editor])
+
+  // Abandoned composer (navigated away mid-compose): strip its orphan marks.
+  useEffect(
+    () => () => {
+      const c = composerRef.current
+      if (c && !createdRef.current && editor && !editor.isDestroyed) {
+        removeCardRefMarks(editor, c.cardId)
+      }
+    },
+    [editor],
+  )
 
   if (!page) return null
   const cover = page.cover ? COVERS[page.cover] : null
@@ -130,8 +320,78 @@ export function PageView({ pageId }: { pageId: string }) {
     focusEditorAt(editor, 'end')
   }
 
+  // Right-click on selected text → card actions.
+  const onEditorContextMenu = (e: React.MouseEvent) => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const text = editor.state.doc.textBetween(from, to, '\n').trim()
+    if (!text) return
+    e.preventDefault()
+    setSelMenu({ at: { x: e.clientX, y: e.clientY }, from, to, text })
+  }
+
+  const startCard = () => {
+    if (!editor || !selMenu) return
+    const cardId = crypto.randomUUID()
+    const refId = crypto.randomUUID()
+    applyCardRefMark(editor, selMenu.from, selMenu.to, cardId, refId)
+    navigator.clipboard?.writeText(selMenu.text).catch(() => {})
+    const coords = editor.view.coordsAtPos(Math.min(selMenu.to, editor.state.doc.content.size))
+    const rect = pageElRef.current?.getBoundingClientRect()
+    createdRef.current = false
+    setComposer({
+      cardId,
+      refs: [{ refId, snapshot: selMenu.text }],
+      top: coords.top,
+      pageRight: rect?.right ?? window.innerWidth - 400,
+    })
+    setSelMenu(null)
+  }
+
+  const addSelectionToCard = () => {
+    if (!editor || !selMenu || !composer) return
+    const refId = crypto.randomUUID()
+    applyCardRefMark(editor, selMenu.from, selMenu.to, composer.cardId, refId)
+    navigator.clipboard?.writeText(selMenu.text).catch(() => {})
+    setComposer(c => c && { ...c, refs: [...c.refs, { refId, snapshot: selMenu.text }] })
+    setSelMenu(null)
+    setCapturing(false)
+  }
+
+  const cancelComposer = () => {
+    if (editor && composer) removeCardRefMarks(editor, composer.cardId)
+    setComposer(null)
+    setCapturing(false)
+  }
+
+  const createCard = (draft: CardDraft) => {
+    if (!composer) return
+    flushContent() // marks must be in the stored doc before refs resolve
+    const now = Date.now()
+    useSrsStore.getState().createCard({
+      id: composer.cardId,
+      front: draft.front.trim(),
+      back: draft.back.trim(),
+      tags: parseTags(draft.tagsText),
+      pageId,
+      refs: composer.refs.map(r => ({
+        refId: r.refId,
+        pageId,
+        snapshot: r.snapshot,
+        createdAt: now,
+      })),
+      type: draft.type,
+      routine: draft.type === 'routine' ? draft.routine : undefined,
+      temp: draft.type === 'temp' ? draft.temp : undefined,
+    })
+    createdRef.current = true
+    setComposer(null)
+    setCapturing(false)
+  }
+
   return (
-    <div className="page-scroll">
+    <div className="page-scroll" ref={scrollRef}>
       {cover && (
         <div className="page-cover" style={{ background: cover.css }}>
           <button
@@ -144,7 +404,7 @@ export function PageView({ pageId }: { pageId: string }) {
         </div>
       )}
 
-      <div className={cx('page', 'font-' + page.font, cover && 'has-cover')}>
+      <div className={cx('page', 'font-' + page.font, cover && 'has-cover')} ref={pageElRef}>
         <div className="page-head">
           {page.icon && (
             <button
@@ -193,12 +453,65 @@ export function PageView({ pageId }: { pageId: string }) {
           />
         </div>
 
-        <EditorContent editor={editor} />
+        <div onContextMenu={onEditorContextMenu}>
+          <EditorContent editor={editor} />
+        </div>
         <div className="editor-tail" onMouseDown={onTailDown} />
       </div>
 
       {slashView && <SlashMenu view={slashView} />}
       {mentionView && <MentionMenu view={mentionView} />}
+
+      {selMenu && (
+        <Popover anchor={selMenu.at} onClose={() => setSelMenu(null)}>
+          <div className="fmt-row">
+            {FORMATS.map(f => (
+              <button
+                key={f.name}
+                type="button"
+                className={cx('fmt-btn', editor?.isActive(f.name) && 'is-active')}
+                title={f.title}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => editor && f.run(editor)}
+              >
+                <f.icon size={15} strokeWidth={1.9} />
+              </button>
+            ))}
+          </div>
+          <div className="menu-sep" />
+          <Menu
+            entries={[
+              composer
+                ? {
+                    icon: Highlighter,
+                    label: 'Add highlight to card',
+                    onSelect: addSelectionToCard,
+                  }
+                : { icon: Sparkles, label: 'New card', onSelect: startCard },
+              {
+                icon: Copy,
+                label: 'Copy',
+                onSelect: () => {
+                  navigator.clipboard?.writeText(selMenu.text).catch(() => {})
+                  setSelMenu(null)
+                },
+              },
+            ]}
+          />
+        </Popover>
+      )}
+
+      {composer && (
+        <CardComposer
+          refs={composer.refs}
+          anchorTop={composer.top}
+          pageRight={composer.pageRight}
+          capturing={capturing}
+          onAddHighlight={() => setCapturing(true)}
+          onCancel={cancelComposer}
+          onCreate={createCard}
+        />
+      )}
 
       {iconPicker && (
         <EmojiPicker

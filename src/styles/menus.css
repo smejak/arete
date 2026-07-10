@@ -17,6 +17,34 @@
   }
 }
 
+/* ------------------------------ formatting row --------------------------- */
+
+.fmt-row {
+  display: flex;
+  gap: 2px;
+  padding: 5px 5px 1px;
+}
+
+.fmt-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-2);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.fmt-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.fmt-btn.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* ---------------------------------- menus -------------------------------- */
 
 .menu {
