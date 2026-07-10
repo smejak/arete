@@ -7,6 +7,7 @@ import {
   Layers,
   Moon,
   MoreHorizontal,
+  Share,
   Star,
   StarOff,
   Sun,
@@ -18,6 +19,7 @@ import { ancestorsOf, descendantsOf, wordCount } from '../lib/tree'
 import { cx, fmtRelative } from '../lib/util'
 import { Menu, Popover } from './Popover'
 import { PageHistoryModal } from './PageHistoryModal'
+import { ShareModal } from './ShareModal'
 
 const VIEW_META = {
   review: { icon: GraduationCap, label: 'Review' },
@@ -47,6 +49,7 @@ export function Topbar({ page }: { page: Page | null }) {
   const [confirming, setConfirming] = useState(false)
   const [overflowAt, setOverflowAt] = useState<DOMRect | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const inPageView = view === 'page'
   const viewMeta = !inPageView ? VIEW_META[view] : null
@@ -130,6 +133,7 @@ export function Topbar({ page }: { page: Page | null }) {
       {historyOpen && page && (
         <PageHistoryModal pageId={page.id} onClose={() => setHistoryOpen(false)} />
       )}
+      {shareOpen && page && <ShareModal pageId={page.id} onClose={() => setShareOpen(false)} />}
 
       {overflowAt && (
         <Popover anchor={overflowAt} onClose={() => setOverflowAt(null)}>
@@ -205,6 +209,14 @@ export function Topbar({ page }: { page: Page | null }) {
                     onSelect: () => {
                       closeMenu()
                       duplicatePage(page.id)
+                    },
+                  },
+                  {
+                    icon: Share,
+                    label: 'Share & export…',
+                    onSelect: () => {
+                      closeMenu()
+                      setShareOpen(true)
                     },
                   },
                   {

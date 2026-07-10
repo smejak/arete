@@ -7,17 +7,29 @@ import {
   Bold,
   Code,
   Copy,
+  Heading1,
+  Heading2,
+  Heading3,
   Highlighter,
   Image as ImageIcon,
   Italic,
+  Lightbulb,
+  List,
+  ListOrdered,
+  ListTodo,
   Smile,
   Sparkles,
+  SquareCode,
   Strikethrough,
+  TextQuote,
+  Trash2,
+  Type,
   Underline,
 } from 'lucide-react'
 import { useStore } from '../store/store'
 import { useSrsStore } from '../store/srs-store'
 import { buildExtensions } from '../editor/extensions'
+import { BlockHandle } from '../editor/BlockHandle'
 import { COVERS, randomCover } from '../lib/covers'
 import { randomEmoji } from '../lib/emoji'
 import { cx } from '../lib/util'
@@ -44,6 +56,19 @@ function scanOwnedPages(doc: PMNode): Set<string> {
   })
   return owned
 }
+
+const TURN_INTO: { title: string; icon: typeof Bold; run: (e: Editor) => void }[] = [
+  { title: 'Text', icon: Type, run: e => e.chain().focus().clearNodes().run() },
+  { title: 'Heading 1', icon: Heading1, run: e => e.chain().focus().clearNodes().setNode('heading', { level: 1 }).run() },
+  { title: 'Heading 2', icon: Heading2, run: e => e.chain().focus().clearNodes().setNode('heading', { level: 2 }).run() },
+  { title: 'Heading 3', icon: Heading3, run: e => e.chain().focus().clearNodes().setNode('heading', { level: 3 }).run() },
+  { title: 'Bulleted list', icon: List, run: e => e.chain().focus().clearNodes().toggleBulletList().run() },
+  { title: 'Numbered list', icon: ListOrdered, run: e => e.chain().focus().clearNodes().toggleOrderedList().run() },
+  { title: 'To-do list', icon: ListTodo, run: e => e.chain().focus().clearNodes().toggleTaskList().run() },
+  { title: 'Quote', icon: TextQuote, run: e => e.chain().focus().clearNodes().toggleBlockquote().run() },
+  { title: 'Callout', icon: Lightbulb, run: e => e.chain().focus().clearNodes().wrapIn('callout').run() },
+  { title: 'Code block', icon: SquareCode, run: e => e.chain().focus().clearNodes().toggleCodeBlock().run() },
+]
 
 const FORMATS: {
   name: string
@@ -103,6 +128,7 @@ export function PageView({ pageId }: { pageId: string }) {
   const [coverPicker, setCoverPicker] = useState<DOMRect | null>(null)
 
   const [selMenu, setSelMenu] = useState<SelMenuState | null>(null)
+  const [blockMenu, setBlockMenu] = useState<{ pos: number; at: DOMRect } | null>(null)
   const [composer, setComposer] = useState<ComposerState | null>(null)
   const [capturing, setCapturing] = useState(false)
   const composerRef = useRef<ComposerState | null>(null)
@@ -113,7 +139,10 @@ export function PageView({ pageId }: { pageId: string }) {
   const [mentionView, mentionSuggestion] = useSuggestionMenu<MentionEntry>()
   const initialContent = useRef(page?.content ?? EMPTY_DOC).current
   const extensions = useMemo(
-    () => buildExtensions({ slash: slashSuggestion, mention: mentionSuggestion }),
+    () => [
+      ...buildExtensions({ slash: slashSuggestion, mention: mentionSuggestion }),
+      BlockHandle.configure({ onMenu: (pos, rect) => setBlockMenu({ pos, at: rect }) }),
+    ],
     [slashSuggestion, mentionSuggestion],
   )
 
@@ -359,6 +388,73 @@ export function PageView({ pageId }: { pageId: string }) {
     setCapturing(false)
   }
 
+  // ----- block handle menu ops -----
+
+  const blockMenuNode = blockMenu && editor ? editor.state.doc.nodeAt(blockMenu.pos) : null
+
+  const turnBlockInto = (run: (e: Editor) => void) => {
+    if (!editor || !blockMenu) return
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(Math.min(blockMenu.pos + 1, editor.state.doc.content.size))
+      .run()
+    run(editor)
+    setBlockMenu(null)
+  }
+
+  const duplicateBlock = () => {
+    if (!editor || !blockMenu) return
+    const node = editor.state.doc.nodeAt(blockMenu.pos)
+    if (node) {
+      editor.view.dispatch(editor.state.tr.insert(blockMenu.pos + node.nodeSize, node))
+    }
+    setBlockMenu(null)
+  }
+
+  const deleteBlock = () => {
+    if (!editor || !blockMenu) return
+    const node = editor.state.doc.nodeAt(blockMenu.pos)
+    if (node) {
+      editor.view.dispatch(editor.state.tr.delete(blockMenu.pos, blockMenu.pos + node.nodeSize))
+      editor.view.focus()
+    }
+    setBlockMenu(null)
+  }
+
+  const cardFromBlock = () => {
+    if (!editor || !blockMenu) return
+    const node = editor.state.doc.nodeAt(blockMenu.pos)
+    if (!node) return
+    const text = node.isAtom
+      ? node.type.name === 'mathBlock'
+        ? `$$${node.attrs.latex}$$`
+        : node.textContent
+      : node.textBetween(0, node.content.size, '\n')
+    const snapshot = (text || '').trim()
+    if (!snapshot) {
+      setBlockMenu(null)
+      return
+    }
+    const cardId = crypto.randomUUID()
+    const refId = crypto.randomUUID()
+    if (!node.isAtom) {
+      applyCardRefMark(editor, blockMenu.pos + 1, blockMenu.pos + node.nodeSize - 1, cardId, refId)
+    }
+    navigator.clipboard?.writeText(snapshot).catch(() => {})
+    const dom = editor.view.nodeDOM(blockMenu.pos)
+    const top = dom instanceof HTMLElement ? dom.getBoundingClientRect().top : blockMenu.at.top
+    const rect = pageElRef.current?.getBoundingClientRect()
+    createdRef.current = false
+    setComposer({
+      cardId,
+      refs: [{ refId, snapshot }],
+      top,
+      pageRight: rect?.right ?? window.innerWidth - 400,
+    })
+    setBlockMenu(null)
+  }
+
   const cancelComposer = () => {
     if (editor && composer) removeCardRefMarks(editor, composer.cardId)
     setComposer(null)
@@ -453,7 +549,7 @@ export function PageView({ pageId }: { pageId: string }) {
           />
         </div>
 
-        <div onContextMenu={onEditorContextMenu}>
+        <div className="editor-shell" onContextMenu={onEditorContextMenu}>
           <EditorContent editor={editor} />
         </div>
         <div className="editor-tail" onMouseDown={onTailDown} />
@@ -461,6 +557,42 @@ export function PageView({ pageId }: { pageId: string }) {
 
       {slashView && <SlashMenu view={slashView} />}
       {mentionView && <MentionMenu view={mentionView} />}
+
+      {blockMenu && (
+        <Popover anchor={blockMenu.at} onClose={() => setBlockMenu(null)}>
+          {blockMenuNode && !blockMenuNode.isAtom && (
+            <>
+              <div className="menu-note">Turn into</div>
+              <div className="turn-grid">
+                {TURN_INTO.map(t => (
+                  <button
+                    key={t.title}
+                    type="button"
+                    className="turn-btn"
+                    title={t.title}
+                    onClick={() => turnBlockInto(t.run)}
+                  >
+                    <t.icon size={15} strokeWidth={1.8} />
+                  </button>
+                ))}
+              </div>
+              <div className="menu-sep" />
+            </>
+          )}
+          <Menu
+            entries={[
+              {
+                icon: Sparkles,
+                label: 'New card from block',
+                onSelect: cardFromBlock,
+              },
+              { icon: Copy, label: 'Duplicate', onSelect: duplicateBlock },
+              { kind: 'sep' },
+              { icon: Trash2, label: 'Delete', danger: true, onSelect: deleteBlock },
+            ]}
+          />
+        </Popover>
+      )}
 
       {selMenu && (
         <Popover anchor={selMenu.at} onClose={() => setSelMenu(null)}>

@@ -250,7 +250,8 @@
 }
 
 .tiptap [data-type='callout'].ProseMirror-selectednode {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: none;
+  background: var(--glow);
 }
 
 .callout-emoji {
@@ -339,8 +340,8 @@
 }
 
 .page-link-block.is-selected .plb {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1.5px var(--accent);
+  background: var(--glow);
+  box-shadow: none;
 }
 
 /* ------------------------------- @ mentions ------------------------------ */
@@ -386,8 +387,8 @@
 }
 
 .page-mention.is-selected {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1.5px var(--accent);
+  background: var(--glow);
+  box-shadow: none;
 }
 
 .page-mention.is-gone {
@@ -416,8 +417,8 @@
 }
 
 .math-inline.is-selected {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1.5px var(--accent);
+  background: var(--glow);
+  box-shadow: none;
 }
 
 .math-empty {
@@ -445,8 +446,8 @@
 }
 
 .math-block.is-selected {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1.5px var(--accent);
+  background: var(--glow);
+  box-shadow: none;
 }
 
 .math-block .math-empty {
@@ -497,6 +498,41 @@
   font-size: 11px;
   color: var(--text-3);
   margin-top: 7px;
+}
+
+/* ------------------------------ block handle ------------------------------ */
+
+.editor-shell {
+  position: relative;
+}
+
+.block-handle {
+  position: absolute;
+  z-index: 40;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-3);
+  cursor: grab;
+  transition: background 0.1s ease, color 0.1s ease;
+  animation: handle-in 0.12s ease;
+}
+
+@keyframes handle-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.block-handle:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.block-handle:active {
+  cursor: grabbing;
 }
 
 /* ------------------------------- placeholder ------------------------------ */

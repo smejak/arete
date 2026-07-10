@@ -15,6 +15,7 @@ import { dueAt, isDue, previewIntervals, scheduleLabel, localDay } from '../lib/
 import { refText } from '../lib/refs'
 import { cx } from '../lib/util'
 import type { SrsCard } from '../store/types'
+import { CardSide } from './CardTextEditor'
 
 const TYPE_ICON = { standard: Repeat, routine: CalendarClock, temp: Timer } as const
 const TYPE_LABEL = { standard: 'Spaced', routine: 'Routine', temp: 'Temporary' } as const
@@ -174,12 +175,16 @@ export function ReviewView() {
             )}
           </div>
 
-          <div className="review-front">{current.front}</div>
+          <CardSide markdown={current.front} className="review-front" />
 
           {revealed ? (
             <>
               <div className="review-divider" />
-              <div className="review-back">{current.back || <span className="review-noback">—</span>}</div>
+              {current.back ? (
+                <CardSide markdown={current.back} className="review-back" />
+              ) : (
+                <div className="review-back"><span className="review-noback">—</span></div>
+              )}
             </>
           ) : (
             <button type="button" className="review-reveal" onClick={() => setRevealed(true)}>

@@ -323,6 +323,60 @@
   gap: 6px;
 }
 
+/* --------------------------- card markdown fields ------------------------ */
+
+.card-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 7px 10px;
+  transition: border-color 0.12s ease;
+  cursor: text;
+}
+
+.card-editor:focus-within {
+  border-color: var(--accent);
+}
+
+.card-editor .tiptap {
+  font-size: 13.5px;
+  line-height: 1.55;
+  min-height: 38px;
+  padding-top: 0;
+}
+
+.card-editor .tiptap p {
+  padding: 1.5px 0;
+}
+
+.card-editor .tiptap h1 { font-size: 1.3em; margin: 6px 0 1px; }
+.card-editor .tiptap h2 { font-size: 1.18em; margin: 5px 0 1px; }
+.card-editor .tiptap h3 { font-size: 1.08em; margin: 4px 0 0; }
+.card-editor .tiptap pre { padding: 10px 12px; margin: 5px 0; }
+.card-editor .tiptap .math-block { padding: 8px 10px; margin: 4px 0; }
+
+.card-side .tiptap {
+  padding-top: 0;
+}
+
+.review-front .tiptap {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 6px 0 10px;
+}
+
+.review-front .tiptap code,
+.review-front .tiptap pre code {
+  font-weight: 500;
+}
+
+.review-back .tiptap {
+  font-size: 16px;
+  line-height: 1.6;
+  padding-bottom: 8px;
+}
+
 /* -------------------------------- card form ------------------------------ */
 
 .card-form {
@@ -1475,6 +1529,67 @@
   font-size: 11.5px;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------- share -------------------------------- */
+
+.share-note {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  padding: 10px 0 4px;
+}
+
+.share-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 10px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.share-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.share-box {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--text-3);
+  border-radius: 5px;
+  color: #fff;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.share-box.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.share-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.share-toggle-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.share-toggle-text span {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.45;
 }
 
 /* ---------------------------------- vault -------------------------------- */

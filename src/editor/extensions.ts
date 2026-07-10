@@ -17,6 +17,28 @@ import { TrailingNode } from './TrailingNode'
 import { SlashCommand, type SlashItem } from './SlashCommand'
 import { MentionCommand, type MentionEntry } from './MentionCommand'
 
+/** Compact schema for flashcard fronts/backs: the same live-markdown feel as
+ * pages (marks, lists, code, KaTeX) without page-level machinery. */
+export function buildCardExtensions(placeholder: string): Extensions {
+  return [
+    StarterKit.configure({
+      heading: { levels: [1, 2, 3] },
+      dropcursor: { color: 'var(--accent)', width: 2 },
+    }),
+    Placeholder.configure({
+      placeholder: ({ node }) => (node.type.name === 'paragraph' ? placeholder : ''),
+    }),
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+    Highlight,
+    Underline,
+    Typography.configure({ emDash: false }),
+    MathInline,
+    MathBlock,
+  ]
+}
+
 /** Suggestion configs are optional so read-only surfaces (history previews)
  * can reuse the exact same schema without menu plumbing. */
 export function buildExtensions(

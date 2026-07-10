@@ -10,6 +10,7 @@ import type {
 } from './types'
 import { applyReview, newFsrsState, scheduleLabel } from '../lib/srs'
 import { appendEvent, recordCardVersion, recordPageVersion } from '../lib/history'
+import { stripMd } from '../lib/util'
 import { useStore } from './store'
 
 const LOG_CAP = 20_000
@@ -43,7 +44,7 @@ interface SrsState {
   sweep: (now?: number) => void
 }
 
-const snippet = (s: string) => (s.length > 60 ? s.slice(0, 57) + '…' : s) || 'Untitled card'
+const snippet = (s: string) => { const t = stripMd(s); return (t.length > 60 ? t.slice(0, 57) + '…' : t) || 'Untitled card' }
 
 /** Snapshot the source page alongside card activity, per the history spec. */
 function snapshotSourcePage(pageId: string | null) {

@@ -11,6 +11,7 @@ import {
 import type { CardType, RoutineConfig, SrsCard, TempConfig } from '../store/types'
 import { localDay } from '../lib/srs'
 import { cx } from '../lib/util'
+import { CardTextEditor } from './CardTextEditor'
 
 // ---------------------------------------------------------------------------
 // Draft model shared by the composer and the card editor
@@ -89,24 +90,18 @@ export function CardForm({
 
   return (
     <div className="card-form">
-      <label className="cf-label" htmlFor="cf-front">Front</label>
-      <textarea
-        id="cf-front"
-        className="cf-text"
-        rows={2}
+      <div className="cf-label">Front</div>
+      <CardTextEditor
         value={draft.front}
         autoFocus={autoFocus}
-        placeholder="The question, cue, or mantra… (⌘V pastes the highlight)"
-        onChange={e => patch({ front: e.target.value })}
+        placeholder="The question, cue, or mantra… markdown and $math$ render live"
+        onChange={front => patch({ front })}
       />
-      <label className="cf-label" htmlFor="cf-back">Back</label>
-      <textarea
-        id="cf-back"
-        className="cf-text"
-        rows={2}
+      <div className="cf-label">Back</div>
+      <CardTextEditor
         value={draft.back}
         placeholder="The answer — optional for reminders"
-        onChange={e => patch({ back: e.target.value })}
+        onChange={back => patch({ back })}
       />
       <label className="cf-label" htmlFor="cf-tags">Tags</label>
       <input

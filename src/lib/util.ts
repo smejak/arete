@@ -21,5 +21,18 @@ export function fmtRelative(ts: number): string {
 export const randomFrom = <T,>(xs: readonly T[]): T =>
   xs[Math.floor(Math.random() * xs.length)]
 
+/** Flatten card markdown into plain text for one-line previews and lists. */
+export function stripMd(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\$\$([\s\S]*?)\$\$/g, ' $1 ')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[\s>#-]+/gm, '')
+    .replace(/[*_~=`]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 export const modKey = isMac ? '⌘' : 'Ctrl+'

@@ -23,7 +23,7 @@ import {
   readCardHistory,
   subscribeHistory,
 } from '../lib/history'
-import { cx, fmtRelative } from '../lib/util'
+import { cx, fmtRelative, stripMd } from '../lib/util'
 import type { CardType, SrsCard } from '../store/types'
 import { CardForm, draftFromCard, emptyDraft, parseTags, type CardDraft } from './CardComposer'
 
@@ -163,9 +163,9 @@ export function CardsView() {
                     <TypeIcon size={12} strokeWidth={1.9} />
                   </span>
                   <span className="card-row-main">
-                    <span className="card-row-front">{card.front || 'Untitled card'}</span>
+                    <span className="card-row-front">{stripMd(card.front) || 'Untitled card'}</span>
                     <span className="card-row-sub">
-                      {card.back && <span className="card-row-back">{card.back}</span>}
+                      {card.back && <span className="card-row-back">{stripMd(card.back)}</span>}
                       {card.tags.map(t => (
                         <span key={t} className="tag-chip">
                           #{t}

@@ -119,6 +119,29 @@
   min-width: 236px;
 }
 
+/* ------------------------------ turn-into grid --------------------------- */
+
+.turn-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 0 6px 4px;
+}
+
+.turn-btn {
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-2);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.turn-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
 /* ------------------------------- font cards ------------------------------ */
 
 .font-row {

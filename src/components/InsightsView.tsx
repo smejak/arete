@@ -20,7 +20,7 @@ import {
   type KbEvent,
   type KbEventKind,
 } from '../lib/history'
-import { cx } from '../lib/util'
+import { cx, stripMd } from '../lib/util'
 
 const DAY_MS = 86_400_000
 
@@ -121,7 +121,7 @@ function Overview() {
       .filter(c => c.fsrs.reps >= 2)
       .sort((a, b) => b.fsrs.lapses - a.fsrs.lapses || b.fsrs.difficulty - a.fsrs.difficulty)
       .slice(0, 6)
-      .map(c => ({ id: c.id, front: c.front, lapses: c.fsrs.lapses, r: retrievability(c, now) }))
+      .map(c => ({ id: c.id, front: stripMd(c.front), lapses: c.fsrs.lapses, r: retrievability(c, now) }))
 
     // slowest
     const times = new Map<string, number[]>()
@@ -135,7 +135,7 @@ function Overview() {
       .map(([id, xs]) => ({ id, avg: xs.reduce((a, b) => a + b, 0) / xs.length }))
       .sort((a, b) => b.avg - a.avg)
       .slice(0, 6)
-      .map(x => ({ ...x, front: cards[x.id]?.front ?? '(deleted card)' }))
+      .map(x => ({ ...x, front: cards[x.id] ? stripMd(cards[x.id].front) : '(deleted card)' }))
     const allTimes = [...times.values()].flat().sort((a, b) => a - b)
     const medianMs = allTimes.length ? allTimes[Math.floor(allTimes.length / 2)] : 0
 
