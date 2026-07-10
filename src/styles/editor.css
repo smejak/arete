@@ -1,0 +1,441 @@
+/* ------------------------------ editor body ------------------------------ */
+
+.tiptap {
+  outline: none;
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--text);
+  caret-color: var(--accent);
+  padding-top: 4px;
+}
+
+.page.font-serif .tiptap {
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 1.7;
+}
+
+.page.font-mono .tiptap {
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+.tiptap p {
+  margin: 0;
+  padding: 3.5px 0;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3 {
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  padding: 3px 0 1px;
+}
+
+.page.font-serif .tiptap h1,
+.page.font-serif .tiptap h2,
+.page.font-serif .tiptap h3 {
+  font-weight: 600;
+  letter-spacing: -0.006em;
+}
+
+.tiptap h1 {
+  font-size: 1.84em;
+  margin: 26px 0 2px;
+}
+
+.tiptap h2 {
+  font-size: 1.44em;
+  margin: 20px 0 1px;
+}
+
+.tiptap h3 {
+  font-size: 1.2em;
+  margin: 14px 0 0;
+}
+
+.tiptap > :first-child {
+  margin-top: 0;
+}
+
+/* --------------------------------- lists --------------------------------- */
+
+.tiptap ul,
+.tiptap ol {
+  margin: 1px 0;
+  padding-left: 26px;
+}
+
+.tiptap li {
+  padding: 1.5px 0;
+}
+
+.tiptap li p {
+  padding: 1.5px 0;
+}
+
+.tiptap li::marker {
+  color: var(--text-2);
+}
+
+/* -------------------------------- to-dos --------------------------------- */
+
+.tiptap ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 2px;
+  margin: 1px 0;
+}
+
+.tiptap ul[data-type='taskList'] li {
+  display: flex;
+  gap: 9px;
+  padding: 2px 0;
+}
+
+.tiptap ul[data-type='taskList'] li > label {
+  flex: none;
+  padding-top: 5px;
+  user-select: none;
+}
+
+.tiptap ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--text-3);
+  border-radius: 4.5px;
+  cursor: pointer;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10.5px;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.tiptap ul[data-type='taskList'] input[type='checkbox']:hover {
+  border-color: var(--accent);
+}
+
+.tiptap ul[data-type='taskList'] input[type='checkbox']:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.3 L4.8 8.9 L9.8 3.4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  animation: check-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.tiptap ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* --------------------------------- quote --------------------------------- */
+
+.tiptap blockquote {
+  margin: 6px 0;
+  padding: 1px 0 1px 16px;
+  border-left: 2.5px solid var(--text);
+}
+
+/* ---------------------------------- code --------------------------------- */
+
+.tiptap code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--code-bg);
+  color: var(--code-inline);
+  padding: 2px 5px;
+  border-radius: 5px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.tiptap pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.tiptap pre code {
+  background: none;
+  color: var(--text);
+  padding: 0;
+  border-radius: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+/* --------------------------------- divider ------------------------------- */
+
+/* A 1px line centered in a taller strip, so it stays easy to click. */
+.tiptap hr {
+  border: none;
+  height: 14px;
+  margin: 5px 0;
+  cursor: default;
+  background: linear-gradient(var(--border-strong), var(--border-strong)) center / 100% 1px
+    no-repeat;
+}
+
+.tiptap hr.ProseMirror-selectednode {
+  background-image: linear-gradient(var(--accent), var(--accent));
+}
+
+/* ---------------------------------- marks -------------------------------- */
+
+.tiptap a {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+  transition: color 0.12s ease, text-decoration-color 0.12s ease;
+}
+
+.tiptap a:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+
+.tiptap mark {
+  background: var(--hl);
+  color: inherit;
+  border-radius: 2.5px;
+  padding: 0.5px 1px;
+  margin: 0 -1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.tiptap s {
+  text-decoration-thickness: 1px;
+}
+
+/* --------------------------------- callout ------------------------------- */
+
+.tiptap [data-type='callout'] {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  background: var(--callout-bg);
+  border-radius: 10px;
+  padding: 13px 16px 13px 11px;
+  margin: 6px 0;
+}
+
+.tiptap [data-type='callout'].ProseMirror-selectednode {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.callout-emoji {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 7px;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.callout-emoji:hover {
+  background: var(--bg-active);
+}
+
+.callout-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.callout-body p {
+  padding: 2px 0;
+}
+
+/* -------------------------------- page link ------------------------------ */
+
+.page-link-block {
+  margin: 2px 0;
+}
+
+.plb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.plb:hover {
+  background: var(--bg-hover);
+}
+
+.plb[disabled] {
+  cursor: default;
+}
+
+.plb-icon {
+  flex: none;
+  width: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-2);
+}
+
+.plb-title {
+  font-weight: 600;
+  font-size: 0.97em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3.5px;
+  text-decoration-color: var(--border-strong);
+  transition: text-decoration-color 0.12s ease;
+}
+
+.plb:hover .plb-title {
+  text-decoration-color: var(--text-3);
+}
+
+.plb-gone {
+  color: var(--text-3);
+  font-style: italic;
+  text-decoration: none;
+}
+
+.page-link-block.is-selected .plb {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+/* ------------------------------- @ mentions ------------------------------ */
+
+.page-mention {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 4px;
+  padding: 0 3px;
+  margin: 0 -1px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.page-mention:hover {
+  background: var(--bg-hover);
+}
+
+.pm-icon {
+  display: inline-grid;
+  place-items: center;
+  font-size: 13.5px;
+  line-height: 1;
+  color: var(--text-2);
+}
+
+.pm-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2.5px;
+  text-decoration-color: var(--border-strong);
+  transition: text-decoration-color 0.12s ease;
+}
+
+.page-mention:hover .pm-title {
+  text-decoration-color: var(--text-3);
+}
+
+.page-mention.is-selected {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.page-mention.is-gone {
+  color: var(--text-3);
+  font-style: italic;
+  cursor: default;
+}
+
+.page-mention.is-gone .pm-title {
+  text-decoration: none;
+}
+
+/* ------------------------------- placeholder ------------------------------ */
+
+.tiptap .is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-3);
+  opacity: 0.65;
+  float: left;
+  height: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* -------------------------------- gapcursor ------------------------------- */
+
+.tiptap .ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+
+.tiptap .ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1.5px solid var(--text);
+  animation: gapcursor-blink 1.1s steps(2) infinite;
+}
+
+@keyframes gapcursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.tiptap.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}

@@ -1,0 +1,240 @@
+/* --------------------------------- topbar -------------------------------- */
+
+.topbar {
+  flex: none;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.topbar-side {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-left: 4px;
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  max-width: 220px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.crumb:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.crumb.is-current {
+  color: var(--text);
+}
+
+.crumb-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.crumb-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb-sep {
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 0 1px;
+  user-select: none;
+}
+
+.crumb-more {
+  padding: 4px 8px;
+}
+
+/* ---------------------------------- page --------------------------------- */
+
+.page-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.page-cover {
+  position: relative;
+  height: 224px;
+  flex: none;
+  animation: cover-in 0.3s ease;
+}
+
+@keyframes cover-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.cover-change {
+  position: absolute;
+  right: 28px;
+  bottom: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(18, 26, 23, 0.45);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.cover-change:hover {
+  background: rgba(18, 26, 23, 0.62);
+}
+
+.page-cover:hover .cover-change,
+.cover-change:focus-visible {
+  opacity: 1;
+}
+
+.page {
+  width: min(708px, 100% - 96px);
+  margin: 0 auto;
+  animation: page-enter 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    width: calc(100% - 48px);
+  }
+}
+
+/* ------------------------------- page head ------------------------------- */
+
+.page-head {
+  padding-top: 72px;
+}
+
+.page.has-cover .page-head {
+  padding-top: 20px;
+}
+
+.page-icon {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin-left: -8px;
+  font-size: 62px;
+  line-height: 1;
+  border-radius: 12px;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.page-icon:hover {
+  background: var(--bg-hover);
+}
+
+.page.has-cover .page-icon {
+  margin-top: -58px;
+  position: relative;
+  z-index: 1;
+}
+
+.page-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding: 2px 0;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.page-head:hover .page-controls,
+.page-controls:focus-within {
+  opacity: 1;
+}
+
+.ghost-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ghost-control:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.page-title {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.18;
+  color: var(--text);
+  caret-color: var(--accent);
+  padding: 2px 0 4px;
+}
+
+.page-title::placeholder {
+  color: var(--text-3);
+  opacity: 0.6;
+}
+
+.page-title:focus-visible {
+  outline: none;
+}
+
+.page.font-serif .page-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+
+.page.font-mono .page-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+}
+
+.editor-tail {
+  height: 32vh;
+  cursor: text;
+}
