@@ -48,6 +48,9 @@ Open (or `xattr -d com.apple.quarantine /Applications/Arete.app`).
 - **Text formatting on right-click** — select text and right-click for
   bold / italic / underline / strikethrough / code / alpenglow, plus
   New card and Copy.
+- **Block handle** — hover any block for a six-dot handle in the left margin:
+  drag to move the block, or click for a menu (Turn into… text/heading/list/
+  quote/callout/code, New card from block, Duplicate, Delete).
 - **Tabs & history** — browser-style tabs above the topbar (middle-click or ×
   to close, ⌘-click a sidebar page or "Open in new tab" to spawn one), with
   per-tab back/forward buttons (⌥⌘← / ⌥⌘→).
@@ -79,10 +82,19 @@ Open (or `xattr -d com.apple.quarantine /Applications/Arete.app`).
   1–4 rate (Anki-style). Every card's *Refs* panel shows the exact live text it
   came from; *Open* jumps to the page and flashes every highlight for five
   seconds.
+- **Markdown card fields** — both the front and back of every card are
+  live-markdown editors, exactly like pages: bold/italic, lists, code, and
+  `$LaTeX$` render as you type. Fields are stored as plain markdown, so cards
+  stay searchable, diffable in history, and readable in vault files.
 - **Cards** — browse, search, and filter everything (deck = source page, type,
   tag, active/archived); edit fronts, backs, tags, and schedules; archive or
   hard-delete; add standalone cards not tied to any text. Archived cards are
   kept forever and keep their memory estimate.
+- **Share & export** — the ⋯ menu's *Share & export* zips a page as plain
+  markdown, with toggles for including its subpages and its cards (any card
+  from those pages, plus cards whose highlights point into them). The zip is a
+  miniature vault: unzip it and *Open folder as vault* restores pages and
+  cards on the receiving side.
 - **Insights** — a dashboard of stat tiles (due, streak, retention, fading
   archived knowledge), a GitHub-style practice heatmap, most-practiced pages,
   toughest cards, answer speed, and time-of-day patterns — all computed from
@@ -105,6 +117,7 @@ Open (or `xattr -d com.apple.quarantine /Applications/Arete.app`).
 | `@` | Mention a page inline (or create one) |
 | `Enter` in title | Drop into the first line of the page |
 | `⌘B / ⌘I / ⌘U / ⌘⇧S` | Inline styles |
+| six-dot handle | Hover a block → drag to move, click for block menu |
 | `Space`, `1–4` | Reveal / rate during review |
 
 ## Where your data lives
