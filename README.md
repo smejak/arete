@@ -124,10 +124,11 @@ disk as you work, and external edits to the markdown are read back on launch.
 Data never leaves the machine. Built on the File System Access API
 (Chrome/Edge today; the identical layer backs a future desktop build).
 
-**Import from Notion**: export your Notion workspace (Markdown & CSV),
-unzip it, then Vault → “Import from Notion…” and pick the folder. Pages
-arrive under a “Notion import” page with hierarchy and links intact;
-databases become simple lists.
+**Leaving Notion?** Export your workspace (Settings → Export → Markdown &
+CSV), unzip it, then Vault → “Open folder as vault…” and pick the folder.
+Notion exports are recognized automatically: hashed filenames are cleaned,
+links become wikilinks, databases become list pages, and the first sync
+rewrites the folder as a tidy Arete vault (the original CSVs stay put).
 
 ## Stack
 
