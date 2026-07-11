@@ -29,6 +29,14 @@ export function DatabaseTable({ dbId, inline }: { dbId: string; inline?: boolean
   const [hiddenMenu, setHiddenMenu] = useState<DOMRect | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [hoverRow, setHoverRow] = useState<{ id: string; top: number } | null>(null)
+  // The gutter floats left of the table — clearing it instantly on mouseleave
+  // makes it vanish mid-reach, so hide on a short grace period instead.
+  const gutterTimer = useRef<number | undefined>(undefined)
+  const keepGutter = () => window.clearTimeout(gutterTimer.current)
+  const scheduleGutterHide = () => {
+    window.clearTimeout(gutterTimer.current)
+    gutterTimer.current = window.setTimeout(() => setHoverRow(null), 250)
+  }
   const [resize, setResize] = useState<{ fieldId: string; width: number } | null>(null)
   const [colDrop, setColDrop] = useState<number | null>(null)
   const [rowDrop, setRowDrop] = useState<{ id: string; after: boolean; top: number } | null>(null)
@@ -210,11 +218,16 @@ export function DatabaseTable({ dbId, inline }: { dbId: string; inline?: boolean
     <div
       ref={rootRef}
       className={cx('dbt', inline && 'is-inline')}
-      onMouseLeave={() => setHoverRow(null)}
+      onMouseLeave={scheduleGutterHide}
     >
       {/* hover gutter: checkbox + drag grip, floating left of the row */}
       {hoverRow && !draggingRow && (
-        <div className="dbt-gutter" style={{ top: hoverRow.top }}>
+        <div
+          className="dbt-gutter"
+          style={{ top: hoverRow.top }}
+          onMouseEnter={keepGutter}
+          onMouseLeave={scheduleGutterHide}
+        >
           <button
             type="button"
             className={cx('dbt-rowcheck', selected.has(hoverRow.id) && 'is-checked')}
@@ -285,14 +298,15 @@ export function DatabaseTable({ dbId, inline }: { dbId: string; inline?: boolean
                   draggingRow === row.id && 'is-dragging',
                 )}
                 data-row-id={row.id}
-                onMouseEnter={e =>
+                onMouseEnter={e => {
+                  keepGutter()
                   // Row offsets are relative to the positioned .dbt-body; the
                   // gutter is positioned against .dbt, so add the body offset.
                   setHoverRow({
                     id: row.id,
                     top: e.currentTarget.offsetTop + (bodyRef.current?.offsetTop ?? 0),
                   })
-                }
+                }}
               >
                 {visible.map(f => (
                   <div key={f.id} className="dbt-cellwrap" style={{ width: widthOf(f) }}>
