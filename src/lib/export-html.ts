@@ -482,7 +482,7 @@ function show(id){
   buildCardSection(id);
   requestAnimationFrame(function(){layoutChips(id)});
   window.scrollTo(0,0);
-  if(history.replaceState)history.replaceState(null,'','#'+id);
+  if(history.replaceState)history.replaceState(null,'',id===ROOT?location.pathname+location.search:'#'+id);
 }
 
 function article(){return document.querySelector('article[data-page="'+current+'"]')}
