@@ -102,6 +102,19 @@ function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
       const body = (node.content ?? []).map(child => `> ${inlinesToMd(child.content, resolve)}`)
       return [`> [!note] ${emoji}`, ...body].join('\n')
     }
+    case 'toggle': {
+      // Obsidian's foldable-callout syntax: `-` after the tag means folded.
+      const children = node.content ?? []
+      const fold = node.attrs?.open === false ? '-' : ''
+      const head = `> [!toggle]${fold} ${inlinesToMd(children[0]?.content, resolve)}`.trimEnd()
+      const inner = children
+        .slice(1)
+        .map(child => blockToMd(child, resolve))
+        .filter((b): b is string => b !== null)
+        .join('\n\n')
+      const body = inner ? inner.split('\n').map(l => ('> ' + l).trimEnd()) : []
+      return [head, ...body].join('\n')
+    }
     case 'codeBlock':
       return '```\n' + ((node.content ?? []).map(c => c.text ?? '').join('') || '') + '\n```'
     case 'horizontalRule':
@@ -113,6 +126,15 @@ function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
       const title = id ? resolve(id) : null
       const target = title ?? 'arete:' + (id ?? '?')
       return node.attrs?.owner ? `![[${target}]]` : `[[${target}]]`
+    }
+    case 'imageBlock':
+    case 'htmlBlock': {
+      // `![name|size](media/<id>__<file>)` — Obsidian-style size suffix.
+      const id = (node.attrs?.mediaId as string) ?? ''
+      const name = (node.attrs?.name as string) || 'file'
+      const size = node.type === 'imageBlock' ? node.attrs?.width : node.attrs?.height
+      const label = size ? `${name}|${size}` : name
+      return `![${label}](media/${id}__${sanitizeFilename(name) || 'file'})`
     }
     default:
       return null
@@ -136,6 +158,11 @@ export function pageToMarkdown(page: Page, resolve: TitleResolver): string {
   fm.push(`order: ${page.order}`)
   fm.push(`created: ${new Date(page.createdAt).toISOString()}`)
   fm.push(`updated: ${new Date(page.updatedAt).toISOString()}`)
+  // Databases round-trip as single-line JSON (stringify emits no newlines).
+  if (page.db) fm.push(`arete-db: ${JSON.stringify(page.db)}`)
+  if (page.props && Object.keys(page.props).length) {
+    fm.push(`arete-props: ${JSON.stringify(page.props)}`)
+  }
   fm.push('---', '')
   return fm.join('\n') + docToMarkdown(page.content, resolve)
 }
@@ -307,8 +334,16 @@ export function markdownToDoc(md: string, resolve: LinkResolver): ParsedMarkdown
     i++ // past closing ---
   }
 
+  const blocks = parseBlocks(lines.slice(i), resolve)
+  if (!blocks.length) blocks.push({ type: 'paragraph' })
+  return { meta, content: { type: 'doc', content: blocks } }
+}
+
+/** Parse a run of markdown lines into blocks. Recurses into toggle bodies. */
+function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
   const blocks: JSONContent[] = []
   const listBuffer: ListLine[] = []
+  let i = 0
   const flushList = () => {
     if (listBuffer.length) {
       blocks.push(buildList([...listBuffer], resolve))
@@ -387,6 +422,22 @@ export function markdownToDoc(md: string, resolve: LinkResolver): ParsedMarkdown
       continue
     }
 
+    const mediaEmbed = /^!\[([^\]|]*)(?:\|(\d+))?\]\(media\/([0-9a-f]{8})__([^)]+)\)\s*$/.exec(line)
+    if (mediaEmbed) {
+      const [, label, size, id, file] = mediaEmbed
+      const html = /\.html?$/i.test(file)
+      blocks.push({
+        type: html ? 'htmlBlock' : 'imageBlock',
+        attrs: {
+          mediaId: id,
+          name: label || file,
+          ...(size ? (html ? { height: Number(size) } : { width: Number(size) }) : {}),
+        },
+      })
+      i++
+      continue
+    }
+
     const wiki = /^(!?)\[\[([^\]]+)\]\]\s*$/.exec(line)
     if (wiki) {
       const id = resolveWikiTarget(wiki[2], resolve)
@@ -404,6 +455,18 @@ export function markdownToDoc(md: string, resolve: LinkResolver): ParsedMarkdown
       while (i < lines.length && lines[i].startsWith('>')) {
         quoted.push(lines[i].replace(/^>\s?/, ''))
         i++
+      }
+      const toggleHead = /^\[!toggle\](-?)\s?(.*)$/.exec(quoted[0])
+      if (toggleHead) {
+        blocks.push({
+          type: 'toggle',
+          attrs: { open: toggleHead[1] !== '-' },
+          content: [
+            p(parseInline(toggleHead[2], resolve)),
+            ...parseBlocks(quoted.slice(1), resolve),
+          ],
+        })
+        continue
       }
       const calloutHead = /^\[!\w+\]\s*(.*)$/.exec(quoted[0])
       const inner = (xs: string[]) => xs.filter(x => x.trim().length).map(x => p(parseInline(x, resolve)))
@@ -427,7 +490,7 @@ export function markdownToDoc(md: string, resolve: LinkResolver): ParsedMarkdown
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(\s*([-*+]|\d+\.)\s|#{1,6}\s|```|\$\$|>|(!?)\[\[[^\]]+\]\]\s*$|(-{3,})\s*$)/.test(lines[i])
+      !/^(\s*([-*+]|\d+\.)\s|#{1,6}\s|```|\$\$|>|!\[|(!?)\[\[[^\]]+\]\]\s*$|(-{3,})\s*$)/.test(lines[i])
     ) {
       para.push(lines[i])
       i++
@@ -435,7 +498,5 @@ export function markdownToDoc(md: string, resolve: LinkResolver): ParsedMarkdown
     blocks.push(p(parseInline(para.join(' '), resolve)))
   }
   flushList()
-
-  if (!blocks.length) blocks.push({ type: 'paragraph' })
-  return { meta, content: { type: 'doc', content: blocks } }
+  return blocks
 }

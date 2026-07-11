@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor, JSONContent } from '@tiptap/core'
-import { Selection } from '@tiptap/pm/state'
+import { Selection, TextSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import {
   Bold,
@@ -15,6 +15,7 @@ import {
   Italic,
   Lightbulb,
   List,
+  ListCollapse,
   ListOrdered,
   ListTodo,
   Smile,
@@ -30,6 +31,7 @@ import { useStore } from '../store/store'
 import { useSrsStore } from '../store/srs-store'
 import { buildExtensions } from '../editor/extensions'
 import { BlockHandle } from '../editor/BlockHandle'
+import { blockSelectKey } from '../editor/BlockSelect'
 import { COVERS, randomCover } from '../lib/covers'
 import { randomEmoji } from '../lib/emoji'
 import { cx } from '../lib/util'
@@ -41,16 +43,21 @@ import { SlashMenu, useSuggestionMenu } from './SlashMenu'
 import { MentionMenu } from './MentionMenu'
 import { Menu, Popover } from './Popover'
 import { CardComposer, parseTags, type CardDraft } from './CardComposer'
+import { RowPageProps } from './db/RowPageProps'
 import type { SlashItem } from '../editor/SlashCommand'
 import type { MentionEntry } from '../editor/MentionCommand'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
 
-/** Subpage blocks owned by this doc (created via /page). */
+/** Subpage/database blocks owned by this doc (created via /page, /table). */
 function scanOwnedPages(doc: PMNode): Set<string> {
   const owned = new Set<string>()
   doc.descendants(node => {
-    if (node.type.name === 'pageLink' && node.attrs.owner && node.attrs.pageId) {
+    if (
+      (node.type.name === 'pageLink' || node.type.name === 'databaseBlock') &&
+      node.attrs.owner &&
+      node.attrs.pageId
+    ) {
       owned.add(node.attrs.pageId as string)
     }
   })
@@ -65,6 +72,7 @@ const TURN_INTO: { title: string; icon: typeof Bold; run: (e: Editor) => void }[
   { title: 'Bulleted list', icon: List, run: e => e.chain().focus().clearNodes().toggleBulletList().run() },
   { title: 'Numbered list', icon: ListOrdered, run: e => e.chain().focus().clearNodes().toggleOrderedList().run() },
   { title: 'To-do list', icon: ListTodo, run: e => e.chain().focus().clearNodes().toggleTaskList().run() },
+  { title: 'Toggle list', icon: ListCollapse, run: e => e.chain().focus().clearNodes().wrapIn('toggle').run() },
   { title: 'Quote', icon: TextQuote, run: e => e.chain().focus().clearNodes().toggleBlockquote().run() },
   { title: 'Callout', icon: Lightbulb, run: e => e.chain().focus().clearNodes().wrapIn('callout').run() },
   { title: 'Code block', icon: SquareCode, run: e => e.chain().focus().clearNodes().toggleCodeBlock().run() },
@@ -137,7 +145,6 @@ export function PageView({ pageId }: { pageId: string }) {
 
   const [slashView, slashSuggestion] = useSuggestionMenu<SlashItem>()
   const [mentionView, mentionSuggestion] = useSuggestionMenu<MentionEntry>()
-  const initialContent = useRef(page?.content ?? EMPTY_DOC).current
   const extensions = useMemo(
     () => [
       ...buildExtensions({ slash: slashSuggestion, mention: mentionSuggestion }),
@@ -155,7 +162,11 @@ export function PageView({ pageId }: { pageId: string }) {
 
   const editor = useEditor({
     extensions,
-    content: initialContent,
+    // Freshest content available: if the editor is ever rebuilt mid-session
+    // (extension hot-reload in dev), resuming from the mount-time snapshot
+    // would silently roll the doc back — and the next autosave would persist
+    // the rollback.
+    content: jsonRef.current ?? page?.content ?? EMPTY_DOC,
     autofocus: false,
     onUpdate: ({ editor }) => {
       jsonRef.current = editor.getJSON()
@@ -320,6 +331,97 @@ export function PageView({ pageId }: { pageId: string }) {
     },
     [editor],
   )
+
+  // ----- Notion-style rubber-band block selection -----
+
+  const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+
+  const applyBand = (y1: number, y2: number) => {
+    if (!editor) return
+    const { doc } = editor.state
+    let first: number | null = null
+    let end = 0
+    doc.forEach((node, offset) => {
+      const dom = editor.view.nodeDOM(offset)
+      if (!(dom instanceof HTMLElement)) return
+      const r = dom.getBoundingClientRect()
+      // Touching a block's row is enough — vertical overlap decides.
+      if (r.bottom > y1 && r.top < y2) {
+        if (first === null) first = offset
+        end = offset + node.nodeSize
+      }
+    })
+    const view = editor.view
+    if (first === null) {
+      if (blockSelectKey.getState(view.state)) {
+        view.dispatch(view.state.tr.setMeta(blockSelectKey, null))
+      }
+      return
+    }
+    const sel = TextSelection.between(doc.resolve(first), doc.resolve(end))
+    view.dispatch(view.state.tr.setMeta(blockSelectKey, { from: first, to: end }).setSelection(sel))
+  }
+
+  const runBand = (startX: number, startY: number, ev0: PointerEvent) => {
+    document.body.classList.add('is-banding')
+    window.getSelection()?.removeAllRanges()
+    const move = (ev: PointerEvent) => {
+      const rect = {
+        x1: Math.min(startX, ev.clientX),
+        y1: Math.min(startY, ev.clientY),
+        x2: Math.max(startX, ev.clientX),
+        y2: Math.max(startY, ev.clientY),
+      }
+      setBand(rect)
+      applyBand(rect.y1, rect.y2)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      document.body.classList.remove('is-banding')
+      setBand(null)
+      editor?.view.focus()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up, { once: true })
+    move(ev0)
+  }
+
+  const onBandMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || !editor) return
+    const t = e.target as HTMLElement
+    if (
+      t.closest(
+        'textarea, input, button, a, .dbt, .db-inline, .db-rowprops, .page-icon, .page-cover, .block-handle, .toggle-arrow, .html-block, .image-handle',
+      )
+    ) {
+      return
+    }
+    const inText = !!t.closest('.tiptap')
+    const startX = e.clientX
+    const startY = e.clientY
+    // Band from the margins on any drag; from inside text only when the drag
+    // heads upward (sideways drags stay native text selection).
+    const arm = (requireUpward: boolean) => {
+      const probe = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX
+        const dy = ev.clientY - startY
+        if (Math.hypot(dx, dy) < 6) return
+        window.removeEventListener('pointermove', probe)
+        window.removeEventListener('pointerup', disarm)
+        if (requireUpward && !(dy < 0 && Math.abs(dy) > Math.abs(dx))) return
+        runBand(startX, startY, ev)
+      }
+      const disarm = () => window.removeEventListener('pointermove', probe)
+      window.addEventListener('pointermove', probe)
+      window.addEventListener('pointerup', disarm, { once: true })
+    }
+    if (inText) {
+      arm(true)
+    } else {
+      e.preventDefault()
+      arm(false)
+    }
+  }
 
   if (!page) return null
   const cover = page.cover ? COVERS[page.cover] : null
@@ -487,7 +589,22 @@ export function PageView({ pageId }: { pageId: string }) {
   }
 
   return (
-    <div className="page-scroll" ref={scrollRef}>
+    <div
+      className={cx('page-scroll', capturing && 'is-capturing')}
+      ref={scrollRef}
+      onMouseDown={onBandMouseDown}
+    >
+      {band && (
+        <div
+          className="select-band"
+          style={{
+            left: band.x1,
+            top: band.y1,
+            width: band.x2 - band.x1,
+            height: band.y2 - band.y1,
+          }}
+        />
+      )}
       {cover && (
         <div className="page-cover" style={{ background: cover.css }}>
           <button
@@ -548,6 +665,8 @@ export function PageView({ pageId }: { pageId: string }) {
             onKeyDown={onTitleKey}
           />
         </div>
+
+        <RowPageProps page={page} />
 
         <div className="editor-shell" onContextMenu={onEditorContextMenu}>
           <EditorContent editor={editor} />

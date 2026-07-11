@@ -63,12 +63,38 @@ export function wordCount(node: JSONContent | null | undefined): number {
   return extractText(node).split(/\s+/).filter(Boolean).length
 }
 
+/** True if the content contains a page-link block pointing at `pageId`. */
+export function hasPageLink(node: JSONContent, pageId: string): boolean {
+  if (node.type === 'pageLink' && node.attrs?.pageId === pageId) return true
+  return (node.content ?? []).some(c => hasPageLink(c, pageId))
+}
+
+/** Remove owner page-link blocks pointing at `pageId`, wherever they nest. */
+export function stripOwnedLink(
+  node: JSONContent,
+  pageId: string,
+): { content: JSONContent; removed: boolean } {
+  let removed = false
+  const walk = (n: JSONContent): JSONContent => {
+    if (!n.content) return n
+    const kids = n.content
+      .filter(c => {
+        const hit = c.type === 'pageLink' && c.attrs?.owner === true && c.attrs?.pageId === pageId
+        if (hit) removed = true
+        return !hit
+      })
+      .map(walk)
+    return { ...n, content: kids }
+  }
+  return { content: walk(node), removed }
+}
+
 /** Rewrite page references (link blocks and @ mentions) after duplicating a
  * subtree, so copies point at the copied pages rather than the originals. */
 export function remapPageLinks(node: JSONContent, map: Map<string, string>): JSONContent {
   const n: JSONContent = { ...node }
   if (
-    (n.type === 'pageLink' || n.type === 'pageMention') &&
+    (n.type === 'pageLink' || n.type === 'pageMention' || n.type === 'databaseBlock') &&
     typeof n.attrs?.pageId === 'string' &&
     map.has(n.attrs.pageId)
   ) {
