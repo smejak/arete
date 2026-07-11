@@ -84,8 +84,12 @@ export function buildShareZip(
   }
 }
 
-/** Save the zip: native save dialog in the desktop app, download in the browser. */
-export async function saveZip(filename: string, data: Uint8Array): Promise<boolean> {
+/** Save a file: native save dialog in the desktop app, download in the browser. */
+export async function saveZip(
+  filename: string,
+  data: Uint8Array,
+  mime = 'application/zip',
+): Promise<boolean> {
   if (isTauriEnv()) {
     const dialog = await import('@tauri-apps/plugin-dialog')
     const path = await dialog.save({ defaultPath: filename })
@@ -94,7 +98,7 @@ export async function saveZip(filename: string, data: Uint8Array): Promise<boole
     await fs.writeFile(path, data)
     return true
   }
-  const url = URL.createObjectURL(new Blob([data as BlobPart], { type: 'application/zip' }))
+  const url = URL.createObjectURL(new Blob([data as BlobPart], { type: mime }))
   const a = document.createElement('a')
   a.href = url
   a.download = filename

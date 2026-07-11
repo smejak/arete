@@ -219,7 +219,9 @@
   z-index: 950;
   width: 344px;
   max-height: calc(100vh - 96px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-pop);
   border-radius: 12px;
   box-shadow: var(--shadow-modal);
@@ -227,11 +229,65 @@
   animation: pop-in 0.16s cubic-bezier(0.2, 0.85, 0.3, 1);
 }
 
+/* Long card text scrolls in the middle; header and Create/Cancel stay put. */
+.composer-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
 .composer-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.composer-head-btns {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* Expanded: a Notion-style centered pop-up over the dimmed page. */
+.composer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 940;
+  background: rgba(12, 17, 15, 0.42);
+  animation: fade-in 0.14s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.composer.is-modal {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, calc(100vw - 64px));
+  max-height: min(86vh, 920px);
+  padding: 16px 20px 14px;
+}
+
+/* Mid-capture: step aside without losing state. */
+.composer.is-ghost,
+.composer-backdrop.is-ghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Capture mode: the page cursor becomes an alpenglow dot. */
+.page-scroll.is-capturing,
+.page-scroll.is-capturing .tiptap {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18'><circle cx='9' cy='9' r='5.5' fill='%23EC8F64' stroke='white' stroke-width='2'/></svg>")
+      9 9,
+    crosshair;
 }
 
 .composer-title {
@@ -343,6 +399,11 @@
   line-height: 1.55;
   min-height: 38px;
   padding-top: 0;
+}
+
+/* Placeholders wrap inside the box (the page editor keeps them nowrap). */
+.card-editor .tiptap p.is-empty::before {
+  white-space: normal;
 }
 
 .card-editor .tiptap p {
@@ -1797,4 +1858,56 @@
   align-items: center;
   gap: 6px;
   border: 1px solid var(--border);
+}
+
+/* ---------------------------- share format picker ------------------------- */
+
+.share-formats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.share-format {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-2);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.share-format:hover {
+  background: var(--bg-hover);
+}
+
+.share-format.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.share-format svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.share-format span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.share-format strong {
+  font-size: 13px;
+}
+
+.share-format em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-3);
 }

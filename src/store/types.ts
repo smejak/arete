@@ -91,6 +91,118 @@ export interface ReviewLogEntry {
   retrievability: number
 }
 
+// ---------------------------------------------------------------------------
+// Databases (Notion-style): a database is a Page carrying a `db` schema whose
+// child pages are the rows. Schema lives once on the database; each row keeps
+// only `props` (values keyed by field id). Presentation (order, widths,
+// visibility, sorts, filters) lives per view, never on the field.
+// ---------------------------------------------------------------------------
+
+export type FieldType =
+  | 'title'
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multiSelect'
+  | 'date'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'createdTime'
+  | 'updatedTime'
+
+/** Notion's palette keys, styled to the alpine scheme in db.css. */
+export type OptionColor =
+  | 'default'
+  | 'gray'
+  | 'brown'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'red'
+
+export interface SelectOption {
+  id: string
+  name: string
+  color: OptionColor
+}
+
+export type NumberFormat = 'plain' | 'commas' | 'percent' | 'currency'
+
+export interface FieldConfig {
+  options?: SelectOption[]
+  numberFormat?: NumberFormat
+}
+
+export interface Field {
+  id: string
+  name: string
+  type: FieldType
+  config: FieldConfig
+}
+
+export interface DateValue {
+  /** ISO date `YYYY-MM-DD`, with `THH:MM` when includeTime. */
+  start: string
+  end?: string
+  includeTime?: boolean
+}
+
+/** select → option id; multiSelect → option ids; date → DateValue. */
+export type CellValue = string | number | boolean | string[] | DateValue | null
+
+export type FilterOp =
+  | 'eq' | 'neq' | 'contains' | 'notContains' | 'startsWith' | 'endsWith'
+  | 'gt' | 'lt' | 'gte' | 'lte'
+  | 'before' | 'after' | 'onOrBefore' | 'onOrAfter'
+  | 'empty' | 'notEmpty'
+
+export interface FilterCond {
+  fieldId: string
+  op: FilterOp
+  value?: CellValue
+}
+
+export interface FilterNode {
+  conjunction: 'and' | 'or'
+  children: (FilterNode | FilterCond)[]
+}
+
+export type CalcKey =
+  | 'none'
+  | 'countAll' | 'countValues' | 'countUnique' | 'countEmpty' | 'countNotEmpty'
+  | 'percentEmpty' | 'percentNotEmpty'
+  | 'sum' | 'avg' | 'median' | 'min' | 'max' | 'range'
+  | 'earliest' | 'latest' | 'dateRange'
+  | 'checked' | 'unchecked' | 'percentChecked' | 'percentUnchecked'
+
+export interface ColumnMeta {
+  width?: number
+  hidden?: boolean
+  wrap?: boolean
+  calc?: CalcKey
+}
+
+export interface TableView {
+  id: string
+  name: string
+  type: 'table'
+  filter: FilterNode | null
+  sorts: { fieldId: string; dir: 'asc' | 'desc' }[]
+  /** Column order; fields missing here render at the end (newly added). */
+  fieldOrder: string[]
+  columnMeta: Record<string, ColumnMeta>
+}
+
+export interface DatabaseDef {
+  fields: Field[]
+  views: TableView[]
+}
+
 export interface Page {
   id: string
   title: string
@@ -103,6 +215,10 @@ export interface Page {
   order: number
   font: FontKey
   content: JSONContent | null
+  /** Set when this page IS a database; its child pages are the rows. */
+  db?: DatabaseDef
+  /** Row property values keyed by field id (pages whose parent is a database). */
+  props?: Record<string, CellValue>
   createdAt: number
   updatedAt: number
 }

@@ -22,6 +22,7 @@ import './styles/sidebar.css'
 import './styles/page.css'
 import './styles/editor.css'
 import './styles/menus.css'
+import './styles/db.css'
 import './styles/srs.css'
 
 // Dev console access to the stores, e.g. arete.getState().movePage(...)

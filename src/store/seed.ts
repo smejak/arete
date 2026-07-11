@@ -103,7 +103,7 @@ export function buildSeed(): {
           code('==highlight=='),
         ),
         li(code('- '), t(' for bullets, '), code('1. '), t(' for numbers, '), code('[] '), t(' for to-dos')),
-        li(code('> '), t(' for a quote, '), code('---'), t(' for a divider, '), code('```'), t(' for code')),
+        li(code('> '), t(' for a toggle, '), code('" '), t(' for a quote, '), code('---'), t(' for a divider')),
       ),
       h(2, 'Leave a trail'),
       tasks(
@@ -142,7 +142,7 @@ export function buildSeed(): {
       ul(
         li(code('#'), t(' '), code('##'), t(' '), code('###'), t('  — headings, then a space')),
         li(code('- '), t(' bullets · '), code('1. '), t(' numbered · '), code('[] '), t(' to-dos')),
-        li(code('> '), t(' quote · '), code('---'), t(' divider · '), code('```'), t(' code block')),
+        li(code('> '), t(' toggle · '), code('" '), t(' quote · '), code('---'), t(' divider · '), code('```'), t(' code block')),
         li(code('/'), t('  opens the block menu — callouts, dividers, new pages, and more')),
         li(code('@'), t('  mentions another page, right in the middle of a sentence')),
       ),
