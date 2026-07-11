@@ -1,0 +1,860 @@
+/* ---------------------------------------------------------------------------
+   Databases — table view. Hairline grid, quiet chrome; alpenglow only for
+   row selection. Option chips take muted alpine tints.
+--------------------------------------------------------------------------- */
+
+/* ------------------------------ inline block ----------------------------- */
+
+.db-block {
+  margin: 4px 0;
+}
+
+.db-block.is-selected .db-inline {
+  background: var(--glow);
+  border-radius: 8px;
+}
+
+.db-gone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 14px;
+  padding: 8px 4px;
+}
+
+.db-inline-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.db-inline-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+
+.db-inline-title::placeholder {
+  color: var(--text-3);
+}
+
+.db-expand {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.db-block:hover .db-expand,
+.db-inline-head:focus-within .db-expand {
+  opacity: 1;
+}
+
+/* --------------------------------- table --------------------------------- */
+
+.dbt {
+  position: relative;
+  font-size: 14px;
+}
+
+.dbt-scroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.dbt-inner {
+  min-width: 100%;
+}
+
+.dbt-head {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+}
+
+.dbt-th {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid var(--border);
+  transition: background 0.1s ease;
+}
+
+.dbt-th:hover {
+  background: var(--bg-hover);
+}
+
+.dbt-th.is-sorted {
+  color: var(--accent);
+}
+
+.dbt-th-icon {
+  flex: none;
+  opacity: 0.75;
+}
+
+.dbt-th-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbt-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.dbt-resizer:hover,
+.dbt-resizer:active {
+  background: var(--accent-soft);
+}
+
+.dbt-coldrop {
+  position: absolute;
+  left: -1.5px;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.dbt-coldrop.is-end {
+  position: static;
+  width: 3px;
+  background: var(--accent);
+}
+
+.dbt-head-tools {
+  display: flex;
+  align-items: center;
+}
+
+.dbt-addcol {
+  flex: none;
+  width: 32px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.dbt-addcol:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ---------------------------------- rows ---------------------------------- */
+
+.dbt-body {
+  position: relative;
+}
+
+.dbt-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s ease;
+}
+
+.dbt-row:hover {
+  background: var(--bg-hover);
+}
+
+.dbt-row.is-selected {
+  background: var(--glow);
+}
+
+.dbt-row.is-dragging {
+  opacity: 0.45;
+}
+
+.dbt-cellwrap {
+  flex: none;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.dbt-cell {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 32px;
+  padding: 5px 8px;
+  cursor: default;
+  overflow: hidden;
+}
+
+.dbt-cell:not(.is-readonly):not(.is-checkbox) {
+  cursor: pointer;
+}
+
+.dbt-cell.is-editing {
+  overflow: visible;
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 3px;
+  background: var(--bg-pop);
+}
+
+.dbc-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+  color: var(--text);
+}
+
+.dbt-cell.is-wrap .dbc-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dbc-title {
+  font-weight: 600;
+}
+
+.dbc-dim {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.dbc-ghost {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.dbc-link {
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2.5px;
+}
+
+.dbc-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text);
+}
+
+.dbc-open {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-pop);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2.5px 6px;
+  box-shadow: 0 1px 3px rgba(20, 34, 29, 0.1);
+}
+
+.dbt-cell:hover .dbc-open {
+  display: inline-flex;
+}
+
+.dbc-open:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.dbc-linkout {
+  padding: 2.5px 4px;
+}
+
+/* checkbox cells */
+
+.dbt-cell.is-checkbox {
+  align-items: center;
+}
+
+.db-check {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--text-3);
+  border-radius: 4.5px;
+  color: #fff;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.db-check.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ------------------------------ new row / bulk ---------------------------- */
+
+.dbt-newrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--text-3);
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.dbt-newrow:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.dbt-bulk {
+  position: sticky;
+  bottom: 12px;
+  margin: 10px auto 0;
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px 5px 12px;
+  background: var(--bg-pop);
+  border-radius: 9px;
+  box-shadow: var(--shadow-pop);
+  z-index: 5;
+}
+
+.dbt-bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-right: 6px;
+}
+
+.dbt-bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  color: var(--text-2);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.dbt-bulk-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.dbt-bulk-btn.is-danger {
+  color: var(--danger);
+}
+
+.dbt-bulk-btn.is-danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger-strong);
+}
+
+/* ------------------------------ hover gutter ------------------------------ */
+
+.dbt-gutter {
+  position: absolute;
+  left: -46px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  z-index: 3;
+}
+
+.dbt-rowcheck {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--text-3);
+  border-radius: 4px;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.dbt-rowcheck:hover {
+  border-color: var(--accent);
+}
+
+.dbt-rowcheck.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dbt-grip {
+  width: 18px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.dbt-grip:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.dbt-grip.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.dbt-rowdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  margin-top: -1.5px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* --------------------------------- chips ---------------------------------- */
+
+.db-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.db-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 1.5px 8px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--chip-bg, var(--bg-active));
+  color: var(--chip-fg, var(--text-2));
+}
+
+.db-chip-x {
+  display: inline-flex;
+  opacity: 0.6;
+  margin-right: -3px;
+}
+
+.db-chip-x:hover {
+  opacity: 1;
+}
+
+/* Muted alpine tints — light theme. */
+.dbo-default { --chip-bg: rgba(32, 58, 49, 0.075); --chip-fg: #4b5852; }
+.dbo-gray    { --chip-bg: #e3e7e5; --chip-fg: #4b5651; }
+.dbo-brown   { --chip-bg: #ebe1d8; --chip-fg: #6d4f38; }
+.dbo-orange  { --chip-bg: #f6e2d1; --chip-fg: #96541f; }
+.dbo-yellow  { --chip-bg: #f2ebcf; --chip-fg: #7d651a; }
+.dbo-green   { --chip-bg: #d9e9e1; --chip-fg: #2e6b5e; }
+.dbo-blue    { --chip-bg: #d9e6ec; --chip-fg: #2e657c; }
+.dbo-purple  { --chip-bg: #e5dfef; --chip-fg: #5c4a8a; }
+.dbo-pink    { --chip-bg: #f0dde6; --chip-fg: #94476b; }
+.dbo-red     { --chip-bg: #f2dcd5; --chip-fg: #a24632; }
+
+[data-theme='dark'] .dbo-default { --chip-bg: rgba(224, 240, 233, 0.09); --chip-fg: #aebab4; }
+[data-theme='dark'] .dbo-gray    { --chip-bg: rgba(224, 240, 233, 0.13); --chip-fg: #b7c2bd; }
+[data-theme='dark'] .dbo-brown   { --chip-bg: rgba(190, 145, 105, 0.22); --chip-fg: #d3ab88; }
+[data-theme='dark'] .dbo-orange  { --chip-bg: rgba(226, 146, 92, 0.2); --chip-fg: #e0a377; }
+[data-theme='dark'] .dbo-yellow  { --chip-bg: rgba(212, 186, 100, 0.18); --chip-fg: #d3bd7e; }
+[data-theme='dark'] .dbo-green   { --chip-bg: rgba(111, 186, 165, 0.18); --chip-fg: #8fcab7; }
+[data-theme='dark'] .dbo-blue    { --chip-bg: rgba(120, 180, 205, 0.18); --chip-fg: #93c2d6; }
+[data-theme='dark'] .dbo-purple  { --chip-bg: rgba(160, 140, 220, 0.19); --chip-fg: #b6a6dd; }
+[data-theme='dark'] .dbo-pink    { --chip-bg: rgba(214, 130, 170, 0.17); --chip-fg: #d9a2bd; }
+[data-theme='dark'] .dbo-red     { --chip-bg: rgba(217, 106, 77, 0.2); --chip-fg: #dd9480; }
+
+/* ------------------------------ option picker ----------------------------- */
+
+.db-picker {
+  min-width: 230px;
+  max-width: 300px;
+}
+
+.db-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+  border-radius: 9px 9px 0 0;
+}
+
+.db-picker-input {
+  flex: 1;
+  min-width: 70px;
+  font-size: 13.5px;
+}
+
+.db-picker-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.db-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 7px;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+
+.db-picker-row:hover {
+  background: var(--bg-hover);
+}
+
+.db-picker-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.db-picker-create {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.db-picker-empty {
+  padding: 10px 8px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+/* -------------------------------- field menu ------------------------------ */
+
+.db-fieldmenu {
+  width: 250px;
+}
+
+.db-fm-name {
+  padding: 8px 8px 4px;
+}
+
+.db-fm-name input {
+  width: 100%;
+  font-size: 13.5px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.db-fm-name input:focus {
+  border-color: var(--accent);
+}
+
+.db-fm-type {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 10px);
+  margin: 2px 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--text);
+  transition: background 0.1s ease;
+}
+
+.db-fm-type:hover {
+  background: var(--bg-hover);
+}
+
+.db-fm-type-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.db-fm-chev {
+  color: var(--text-3);
+  transition: transform 0.14s ease;
+}
+
+.db-fm-chev.is-open {
+  transform: rotate(90deg);
+}
+
+.db-fm-types {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 0 5px 4px;
+}
+
+.db-fm-formats {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 6px;
+}
+
+.db-fm-format {
+  flex: 1;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  padding: 4px 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  transition: all 0.1s ease;
+}
+
+.db-fm-format:hover {
+  background: var(--bg-hover);
+}
+
+.db-fm-format.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.db-fm-options {
+  padding: 2px 5px 4px;
+}
+
+.db-fm-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.db-fm-option:hover {
+  background: var(--bg-hover);
+}
+
+.db-fm-option:hover .db-fm-optdel {
+  opacity: 1;
+}
+
+.db-fm-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--chip-bg, var(--bg-active));
+  border: 1px solid var(--chip-fg, var(--border-strong));
+}
+
+.db-fm-optname {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.db-fm-optdel {
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.db-fm-addopt {
+  color: var(--text-3);
+}
+
+/* -------------------------------- date picker ----------------------------- */
+
+.db-datepick {
+  width: 252px;
+  padding: 10px;
+}
+
+.db-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px;
+}
+
+.db-date-month {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.db-date-arrows {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.db-date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.db-date-dow {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 3px 0;
+}
+
+.db-date-day {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  border-radius: 6px;
+  color: var(--text);
+  transition: background 0.1s ease;
+}
+
+.db-date-day:hover {
+  background: var(--bg-hover);
+}
+
+.db-date-day.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+}
+
+.db-date-day.is-picked {
+  background: var(--accent);
+  color: #fff;
+}
+
+.db-date-day.is-between {
+  background: var(--accent-soft);
+}
+
+.db-date-times {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.db-date-time {
+  flex: 1;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.db-date-opts {
+  display: flex;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.db-date-opt {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  transition: all 0.1s ease;
+}
+
+.db-date-opt:hover {
+  background: var(--bg-hover);
+}
+
+.db-date-opt.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.db-date-clear {
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+/* ----------------------------- full-page view ----------------------------- */
+
+.db-fullpage {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 56px 90px;
+}
+
+.db-fullpage .dbt {
+  font-size: 14px;
+}
+
+/* ---------------------------- row page props ------------------------------ */
+
+.db-rowprops {
+  margin: 2px 0 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.db-rowprop {
+  display: flex;
+  align-items: flex-start;
+  min-height: 30px;
+}
+
+.db-rowprop-name {
+  flex: none;
+  width: 150px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px 5px 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.db-rowprop-value {
+  flex: 1;
+  min-width: 0;
+}
+
+.db-rowprop-value .dbt-cell {
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.db-rowprop-value .dbt-cell:hover:not(.is-readonly):not(.is-checkbox) {
+  background: var(--bg-hover);
+}

@@ -10,6 +10,8 @@ import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
 import { Topbar } from './components/Topbar'
 import { PageView } from './components/PageView'
+import { PagePeek } from './components/PagePeek'
+import { DatabasePage } from './components/db/DatabasePage'
 import { SearchModal } from './components/SearchModal'
 import { ReviewView } from './components/ReviewView'
 import { CardsView } from './components/CardsView'
@@ -106,7 +108,8 @@ export default function App() {
         </div>
         <main className="main">
           <Topbar page={page} />
-          {view === 'page' && page && (
+          {view === 'page' && page && page.db && <DatabasePage key={page.id} pageId={page.id} />}
+          {view === 'page' && page && !page.db && (
             <PageView key={page.id + ':' + restoreNonce} pageId={page.id} />
           )}
           {view === 'review' && <ReviewView />}
@@ -115,6 +118,7 @@ export default function App() {
         </main>
       </div>
       {searchOpen && <SearchModal />}
+      <PagePeek />
     </div>
   )
 }

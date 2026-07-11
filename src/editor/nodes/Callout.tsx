@@ -6,35 +6,38 @@ import {
   type NodeViewProps,
 } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { EmojiPicker } from '../../components/EmojiPicker'
+import { cx } from '../../lib/util'
 
 function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const btnRef = useRef<HTMLButtonElement>(null)
+  const [pickerAt, setPickerAt] = useState<DOMRect | null>(null)
+  const emoji = (node.attrs.emoji as string) || ''
 
   return (
-    <NodeViewWrapper className="callout" data-type="callout">
-      <button
-        type="button"
-        ref={btnRef}
-        className="callout-emoji"
-        contentEditable={false}
-        tabIndex={-1}
-        disabled={!editor.isEditable}
-        onMouseDown={e => e.preventDefault()}
-        onClick={() => setPickerOpen(o => !o)}
-        title="Change emoji"
-      >
-        {node.attrs.emoji}
-      </button>
-      {pickerOpen && btnRef.current && (
+    <NodeViewWrapper className={cx('callout', !emoji && 'no-emoji')} data-type="callout">
+      {emoji && (
+        <button
+          type="button"
+          className="callout-emoji"
+          contentEditable={false}
+          tabIndex={-1}
+          disabled={!editor.isEditable}
+          onMouseDown={e => e.preventDefault()}
+          onClick={e => setPickerAt(e.currentTarget.getBoundingClientRect())}
+          title="Change emoji"
+        >
+          {emoji}
+        </button>
+      )}
+      {pickerAt && (
         <EmojiPicker
-          anchor={btnRef.current.getBoundingClientRect()}
-          onClose={() => setPickerOpen(false)}
-          onPick={emoji => {
-            if (emoji) updateAttributes({ emoji })
-            setPickerOpen(false)
+          anchor={pickerAt}
+          allowRemove={!!emoji}
+          onClose={() => setPickerAt(null)}
+          onPick={picked => {
+            updateAttributes({ emoji: picked ?? '' })
+            setPickerAt(null)
           }}
         />
       )}
@@ -46,7 +49,8 @@ function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
 export const Callout = Node.create({
   name: 'callout',
   group: 'block',
-  content: 'paragraph+',
+  // Full blocks inside: lists, toggles, code, quotes — not just paragraphs.
+  content: 'block+',
   defining: true,
 
   addAttributes() {
@@ -57,7 +61,7 @@ export const Callout = Node.create({
     return [
       {
         tag: 'div[data-type="callout"]',
-        getAttrs: el => ({ emoji: (el as HTMLElement).dataset.emoji || '💡' }),
+        getAttrs: el => ({ emoji: (el as HTMLElement).dataset.emoji ?? '' }),
       },
     ]
   },
@@ -87,6 +91,8 @@ export const Callout = Node.create({
             const callout = $from.node(depth)
             const para = $from.parent
             if (para.type.name !== 'paragraph' || para.content.size > 0) return false
+            // Only a paragraph sitting directly in the callout escapes.
+            if ($from.depth !== depth + 1) return false
             const isLastChild = $from.index(depth) === callout.childCount - 1
             if (!isLastChild || callout.childCount < 2) return false
             if (dispatch) {

@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import {
   CalendarClock,
   Highlighter,
+  Maximize2,
+  Minimize2,
   Plus,
   Repeat,
   Timer,
@@ -288,10 +290,19 @@ export function CardComposer({
   onCreate: (draft: CardDraft) => void
 }) {
   const [draft, setDraft] = useState<CardDraft>(emptyDraft)
+  const [expanded, setExpanded] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
 
+  // Mid-capture the pop-up steps aside: the page is fully interactive and the
+  // dot cursor shows; finishing (or cancelling) the highlight brings it back.
+  const ghost = expanded && capturing
+
+  // Reposition on any draft change: long card text grows the panel, and a
+  // panel placed while short would push its footer below the viewport.
+  // (The modal variant is centered by CSS instead.)
   useLayoutEffect(() => {
+    if (expanded) return
     const el = panelRef.current
     if (!el) return
     const width = 344
@@ -300,41 +311,70 @@ export function CardComposer({
     const left = Math.min(pageRight + 24, vw - width - 16)
     const top = Math.max(58, Math.min(anchorTop - 20, vh - Math.min(el.offsetHeight, vh - 96) - 20))
     setPos({ top, left: Math.max(16, left) })
-  }, [anchorTop, pageRight, refs.length, draft.type, draft.routine.mode])
+  }, [anchorTop, pageRight, refs.length, draft, expanded])
 
   return createPortal(
-    <div
-      ref={panelRef}
-      className="composer"
-      style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: 'hidden' }}
-    >
+    <>
+      {expanded && (
+        <div
+          className={cx('composer-backdrop', ghost && 'is-ghost')}
+          onClick={() => setExpanded(false)}
+        />
+      )}
+      <div
+        ref={panelRef}
+        className={cx('composer', expanded && 'is-modal', ghost && 'is-ghost')}
+        style={
+          expanded
+            ? undefined
+            : pos
+              ? { top: pos.top, left: pos.left }
+              : { top: 0, left: 0, visibility: 'hidden' }
+        }
+      >
       <div className="composer-head">
         <span className="composer-title">New card</span>
-        <button type="button" className="icon-btn sm" onClick={onCancel} title="Discard (removes highlights)">
-          <X size={14} strokeWidth={1.8} />
+        <span className="composer-head-btns">
+          <button
+            type="button"
+            className="icon-btn sm"
+            onClick={() => setExpanded(o => !o)}
+            title={expanded ? 'Back to the side panel' : 'Expand'}
+          >
+            {expanded ? (
+              <Minimize2 size={13} strokeWidth={1.8} />
+            ) : (
+              <Maximize2 size={13} strokeWidth={1.8} />
+            )}
+          </button>
+          <button type="button" className="icon-btn sm" onClick={onCancel} title="Discard (removes highlights)">
+            <X size={14} strokeWidth={1.8} />
+          </button>
+        </span>
+      </div>
+
+      <div className="composer-scroll">
+        <button
+          type="button"
+          className={cx('composer-highlight', capturing && 'is-capturing')}
+          onClick={onAddHighlight}
+          disabled={capturing}
+        >
+          <Highlighter size={14} strokeWidth={1.8} />
+          {capturing ? 'Select text in the page… (esc to stop)' : 'Add another highlight'}
         </button>
+
+        <div className="composer-refs">
+          {refs.map((r, i) => (
+            <div key={r.refId} className="composer-ref">
+              <span className="composer-ref-n">{i + 1}</span>
+              <span className="composer-ref-text">{r.snapshot}</span>
+            </div>
+          ))}
+        </div>
+
+        <CardForm draft={draft} onChange={setDraft} autoFocus />
       </div>
-
-      <button
-        type="button"
-        className={cx('composer-highlight', capturing && 'is-capturing')}
-        onClick={onAddHighlight}
-        disabled={capturing}
-      >
-        <Highlighter size={14} strokeWidth={1.8} />
-        {capturing ? 'Select text in the page… (esc to stop)' : 'Add another highlight'}
-      </button>
-
-      <div className="composer-refs">
-        {refs.map((r, i) => (
-          <div key={r.refId} className="composer-ref">
-            <span className="composer-ref-n">{i + 1}</span>
-            <span className="composer-ref-text">{r.snapshot}</span>
-          </div>
-        ))}
-      </div>
-
-      <CardForm draft={draft} onChange={setDraft} autoFocus />
 
       <div className="composer-foot">
         <span className="composer-hint">Highlight copied — ⌘V pastes it</span>
@@ -352,7 +392,8 @@ export function CardComposer({
           </button>
         </div>
       </div>
-    </div>,
+      </div>
+    </>,
     document.body,
   )
 }

@@ -1,10 +1,27 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { JSONContent } from '@tiptap/core'
-import type { FontKey, Page } from './types'
+import type {
+  CellValue,
+  ColumnMeta,
+  DatabaseDef,
+  FieldType,
+  FilterNode,
+  FontKey,
+  Page,
+  TableView,
+} from './types'
 import { buildSeed } from './seed'
-import { childrenOf, descendantsOf, inSubtree, remapPageLinks } from '../lib/tree'
+import {
+  childrenOf,
+  descendantsOf,
+  hasPageLink,
+  inSubtree,
+  remapPageLinks,
+  stripOwnedLink,
+} from '../lib/tree'
 import { appendEvent, recordPageVersion, type PageVersion } from '../lib/history'
+import { changeFieldType, createDatabaseDef, defaultFieldName } from '../lib/db'
 
 export type DropSpot = { type: 'before' | 'after' | 'inside'; id: string } | { type: 'root-end' }
 
@@ -50,6 +67,8 @@ interface AreteState {
   /** Open tabs; `view`/`activePageId` always mirror the active tab's loc. */
   tabs: Tab[]
   activeTabId: string | null
+  /** Page shown in the right-side peek panel (table rows open here). */
+  peekPageId: string | null
 
   setView: (view: AppView) => void
   flashRefs: (cardId: string, pageId: string) => void
@@ -82,6 +101,20 @@ interface AreteState {
   toggleTheme: () => void
   setSearchOpen: (open: boolean) => void
   clearPendingFocus: () => void
+  setPeek: (pageId: string | null) => void
+
+  // ----- databases (schema on the db page, rows = child pages) -----
+  createDatabase: (opts: { parentId: string | null; title?: string }) => string
+  dbUpdate: (dbId: string, fn: (db: DatabaseDef) => DatabaseDef) => void
+  dbUpdateView: (dbId: string, viewId: string, patch: Partial<Omit<TableView, 'id' | 'type'>>) => void
+  dbSetColumnMeta: (dbId: string, viewId: string, fieldId: string, patch: Partial<ColumnMeta>) => void
+  dbAddField: (dbId: string, type: FieldType, opts?: { beforeId?: string; afterId?: string }) => string
+  dbChangeFieldType: (dbId: string, fieldId: string, toType: FieldType) => void
+  dbDuplicateField: (dbId: string, fieldId: string) => void
+  dbRemoveField: (dbId: string, fieldId: string) => void
+  dbAddRow: (dbId: string, opts?: { afterId?: string }) => string
+  dbDeleteRows: (ids: string[]) => void
+  dbSetCell: (rowId: string, fieldId: string, value: CellValue) => void
 }
 
 const seed = buildSeed()
@@ -138,6 +171,7 @@ export const useStore = create<AreteState>()(
         restoreNonce: 0,
         tabs: [],
         activeTabId: null,
+        peekPageId: null,
 
         setView: view =>
           set(s => ({ ...navigate(s, { view, pageId: s.activePageId }), searchOpen: false })),
@@ -377,7 +411,14 @@ export const useStore = create<AreteState>()(
             back: t.back.filter(alive),
             forward: t.forward.filter(alive),
           }))
-          set({ pages, favorites, expanded, activePageId, tabs })
+          set({
+            pages,
+            favorites,
+            expanded,
+            activePageId,
+            tabs,
+            ...(s.peekPageId && ids.has(s.peekPageId) ? { peekPageId: null } : {}),
+          })
           if (!activePageId) get().createPage({})
         },
 
@@ -413,19 +454,231 @@ export const useStore = create<AreteState>()(
           sibs.forEach((p, i) => {
             pages[p.id] = { ...pages[p.id], order: i }
           })
+          let restoreBump = false
           if (oldParent !== newParent) {
             childrenOf(pages, oldParent).forEach((p, i) => {
               pages[p.id] = { ...pages[p.id], order: i }
             })
+            // The page's block follows it (like Notion): drop the owner link
+            // from the old parent, append one at the bottom of the new parent
+            // (unless the new parent is a database — rows carry no blocks).
+            if (oldParent && pages[oldParent]?.content) {
+              const res = stripOwnedLink(pages[oldParent].content!, id)
+              if (res.removed) {
+                const content = res.content.content?.length
+                  ? res.content
+                  : { type: 'doc', content: [{ type: 'paragraph' }] }
+                pages[oldParent] = { ...pages[oldParent], content, updatedAt: Date.now() }
+                if (s.activePageId === oldParent) restoreBump = true
+              }
+            }
+            if (newParent && pages[newParent] && !pages[newParent].db) {
+              const c = pages[newParent].content ?? { type: 'doc', content: [] }
+              if (!hasPageLink(c, id)) {
+                pages[newParent] = {
+                  ...pages[newParent],
+                  content: {
+                    ...c,
+                    content: [
+                      ...(c.content ?? []),
+                      { type: 'pageLink', attrs: { pageId: id, owner: true } },
+                    ],
+                  },
+                  updatedAt: Date.now(),
+                }
+                if (s.activePageId === newParent) restoreBump = true
+              }
+            }
           }
 
           set({
             pages,
+            // Open editors don't watch store content — remount the active one
+            // when its doc just changed under it.
+            ...(restoreBump ? { restoreNonce: s.restoreNonce + 1 } : {}),
             ...(spot.type === 'inside'
               ? { expanded: { ...s.expanded, ['main:' + spot.id]: true } }
               : {}),
           })
         },
+
+        // ----- databases -----
+
+        createDatabase: ({ parentId, title }) => {
+          const id = get().createPage({ parentId, title: title ?? '', navigate: false })
+          set(s => ({ pages: { ...s.pages, [id]: { ...s.pages[id], db: createDatabaseDef() } } }))
+          // A fresh table starts with three empty rows, like Notion.
+          for (let i = 0; i < 3; i++) get().dbAddRow(id)
+          return id
+        },
+
+        dbUpdate: (dbId, fn) =>
+          patch(dbId, p => (p.db ? { ...p, db: fn(p.db), updatedAt: Date.now() } : p)),
+
+        dbUpdateView: (dbId, viewId, viewPatch) =>
+          get().dbUpdate(dbId, db => ({
+            ...db,
+            views: db.views.map(v => (v.id === viewId ? { ...v, ...viewPatch } : v)),
+          })),
+
+        dbSetColumnMeta: (dbId, viewId, fieldId, metaPatch) =>
+          get().dbUpdate(dbId, db => ({
+            ...db,
+            views: db.views.map(v =>
+              v.id === viewId
+                ? {
+                    ...v,
+                    columnMeta: {
+                      ...v.columnMeta,
+                      [fieldId]: { ...v.columnMeta[fieldId], ...metaPatch },
+                    },
+                  }
+                : v,
+            ),
+          })),
+
+        dbAddField: (dbId, type, opts) => {
+          const fieldId = crypto.randomUUID()
+          get().dbUpdate(dbId, db => {
+            const field = {
+              id: fieldId,
+              name: defaultFieldName(type, db.fields),
+              type,
+              config: type === 'select' || type === 'multiSelect' ? { options: [] } : {},
+            }
+            const views = db.views.map(v => {
+              const order = [...v.fieldOrder]
+              const anchor = opts?.beforeId ?? opts?.afterId
+              const at = anchor ? order.indexOf(anchor) : -1
+              if (at === -1) order.push(fieldId)
+              else order.splice(opts?.beforeId ? at : at + 1, 0, fieldId)
+              return { ...v, fieldOrder: order }
+            })
+            return { ...db, fields: [...db.fields, field], views }
+          })
+          return fieldId
+        },
+
+        dbChangeFieldType: (dbId, fieldId, toType) => {
+          const s = get()
+          const dbPage = s.pages[dbId]
+          const field = dbPage?.db?.fields.find(f => f.id === fieldId)
+          if (!dbPage?.db || !field || field.type === 'title' || toType === field.type) return
+          const rows = childrenOf(s.pages, dbId)
+          const { field: next, values } = changeFieldType(field, toType, rows)
+          const pages = { ...s.pages }
+          pages[dbId] = {
+            ...dbPage,
+            db: { ...dbPage.db, fields: dbPage.db.fields.map(f => (f.id === fieldId ? next : f)) },
+            updatedAt: Date.now(),
+          }
+          for (const row of rows) {
+            const v = values.get(row.id) ?? null
+            const props = { ...row.props }
+            if (v === null) delete props[fieldId]
+            else props[fieldId] = v
+            pages[row.id] = { ...row, props }
+          }
+          set({ pages })
+        },
+
+        dbDuplicateField: (dbId, fieldId) => {
+          const s = get()
+          const dbPage = s.pages[dbId]
+          const field = dbPage?.db?.fields.find(f => f.id === fieldId)
+          if (!dbPage?.db || !field || field.type === 'title') return
+          const copy = {
+            ...field,
+            id: crypto.randomUUID(),
+            name: field.name + ' copy',
+            config: { ...field.config, options: field.config.options?.map(o => ({ ...o })) },
+          }
+          const pages = { ...s.pages }
+          pages[dbId] = {
+            ...dbPage,
+            db: {
+              ...dbPage.db,
+              fields: [...dbPage.db.fields, copy],
+              views: dbPage.db.views.map(v => {
+                const order = [...v.fieldOrder]
+                const at = order.indexOf(fieldId)
+                order.splice(at === -1 ? order.length : at + 1, 0, copy.id)
+                return {
+                  ...v,
+                  fieldOrder: order,
+                  columnMeta: v.columnMeta[fieldId]
+                    ? { ...v.columnMeta, [copy.id]: { ...v.columnMeta[fieldId] } }
+                    : v.columnMeta,
+                }
+              }),
+            },
+            updatedAt: Date.now(),
+          }
+          for (const row of childrenOf(s.pages, dbId)) {
+            if (row.props && fieldId in row.props) {
+              pages[row.id] = { ...row, props: { ...row.props, [copy.id]: row.props[fieldId] } }
+            }
+          }
+          set({ pages })
+        },
+
+        dbRemoveField: (dbId, fieldId) => {
+          const s = get()
+          const dbPage = s.pages[dbId]
+          const field = dbPage?.db?.fields.find(f => f.id === fieldId)
+          if (!dbPage?.db || !field || field.type === 'title') return
+          const prune = (n: FilterNode): FilterNode => ({
+            ...n,
+            children: n.children
+              .filter(c => ('fieldId' in c ? c.fieldId !== fieldId : true))
+              .map(c => ('conjunction' in c ? prune(c) : c)),
+          })
+          const pages = { ...s.pages }
+          pages[dbId] = {
+            ...dbPage,
+            db: {
+              ...dbPage.db,
+              fields: dbPage.db.fields.filter(f => f.id !== fieldId),
+              views: dbPage.db.views.map(v => {
+                const { [fieldId]: _gone, ...meta } = v.columnMeta
+                return {
+                  ...v,
+                  fieldOrder: v.fieldOrder.filter(id => id !== fieldId),
+                  sorts: v.sorts.filter(x => x.fieldId !== fieldId),
+                  filter: v.filter ? prune(v.filter) : null,
+                  columnMeta: meta,
+                }
+              }),
+            },
+            updatedAt: Date.now(),
+          }
+          for (const row of childrenOf(s.pages, dbId)) {
+            if (row.props && fieldId in row.props) {
+              const { [fieldId]: _v, ...props } = row.props
+              pages[row.id] = { ...row, props }
+            }
+          }
+          set({ pages })
+        },
+
+        dbAddRow: (dbId, opts) => {
+          const id = get().createPage({ parentId: dbId, navigate: false })
+          set(s => ({ pages: { ...s.pages, [id]: { ...s.pages[id], props: {} } } }))
+          if (opts?.afterId) get().movePage(id, { type: 'after', id: opts.afterId })
+          return id
+        },
+
+        dbDeleteRows: ids => {
+          for (const id of ids) get().deletePage(id)
+        },
+
+        dbSetCell: (rowId, fieldId, value) =>
+          patch(rowId, p => {
+            const props = { ...p.props }
+            if (value === null || value === undefined) delete props[fieldId]
+            else props[fieldId] = value
+            return { ...p, props, updatedAt: Date.now() }
+          }),
 
         toggleExpand: key => set(s => ({ expanded: { ...s.expanded, [key]: !s.expanded[key] } })),
         toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
@@ -435,6 +688,7 @@ export const useStore = create<AreteState>()(
           set({ searchOpen: open })
         },
         clearPendingFocus: () => set({ pendingFocusId: null }),
+        setPeek: pageId => set(s => (s.pages[pageId ?? ''] || pageId === null ? { peekPageId: pageId } : s)),
       }
     },
     {

@@ -1,4 +1,5 @@
 import StarterKit from '@tiptap/starter-kit'
+import Blockquote from '@tiptap/extension-blockquote'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -6,9 +7,14 @@ import Link from '@tiptap/extension-link'
 import Highlight from '@tiptap/extension-highlight'
 import Underline from '@tiptap/extension-underline'
 import Typography from '@tiptap/extension-typography'
-import type { Extensions } from '@tiptap/core'
+import { Extension, wrappingInputRule, type Extensions } from '@tiptap/core'
+import { Selection } from '@tiptap/pm/state'
 import type { SuggestionOptions } from '@tiptap/suggestion'
 import { Callout } from './nodes/Callout'
+import { Toggle } from './nodes/Toggle'
+import { DatabaseBlock } from './nodes/DatabaseBlock'
+import { HtmlBlock, ImageBlock, MediaPaste } from './nodes/Media'
+import { BlockSelect } from './BlockSelect'
 import { PageLink } from './nodes/PageLink'
 import { PageMention } from './nodes/PageMention'
 import { MathBlock, MathInline } from './nodes/Math'
@@ -17,14 +23,53 @@ import { TrailingNode } from './TrailingNode'
 import { SlashCommand, type SlashItem } from './SlashCommand'
 import { MentionCommand, type MentionEntry } from './MentionCommand'
 
+/** `>` belongs to toggles now (like Notion), so quotes wrap on `"` instead —
+ * matching both the straight quote and the curly one Typography makes of it. */
+const QuoteBlock = Blockquote.extend({
+  addInputRules() {
+    return [wrappingInputRule({ find: /^\s*["“]\s$/, type: this.type })]
+  },
+})
+
+/** Backspace on an empty paragraph that sits right after a list removes the
+ * paragraph and lands at the end of the list — instead of ProseMirror's
+ * default join, which re-wraps the line into a bullet you then have to
+ * delete a second time. */
+const ListEscape = Extension.create({
+  name: 'listEscape',
+  addKeyboardShortcuts() {
+    return {
+      Backspace: () =>
+        this.editor.commands.command(({ state, tr, dispatch }) => {
+          const { $from, empty } = state.selection
+          if (!empty || $from.parentOffset !== 0 || $from.depth !== 1) return false
+          const para = $from.parent
+          if (para.type.name !== 'paragraph' || para.content.size !== 0) return false
+          const idx = $from.index(0)
+          if (idx === 0) return false
+          const prev = state.doc.child(idx - 1)
+          if (!['bulletList', 'orderedList', 'taskList'].includes(prev.type.name)) return false
+          if (dispatch) {
+            const pos = $from.before(1)
+            tr.delete(pos, pos + para.nodeSize)
+            tr.setSelection(Selection.near(tr.doc.resolve(pos), -1)).scrollIntoView()
+          }
+          return true
+        }),
+    }
+  },
+})
+
 /** Compact schema for flashcard fronts/backs: the same live-markdown feel as
  * pages (marks, lists, code, KaTeX) without page-level machinery. */
 export function buildCardExtensions(placeholder: string): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
+      blockquote: false,
       dropcursor: { color: 'var(--accent)', width: 2 },
     }),
+    QuoteBlock,
     Placeholder.configure({
       placeholder: ({ node }) => (node.type.name === 'paragraph' ? placeholder : ''),
     }),
@@ -36,6 +81,7 @@ export function buildCardExtensions(placeholder: string): Extensions {
     Typography.configure({ emDash: false }),
     MathInline,
     MathBlock,
+    ListEscape,
   ]
 }
 
@@ -50,8 +96,10 @@ export function buildExtensions(
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
+      blockquote: false,
       dropcursor: { color: 'var(--accent)', width: 2.5 },
     }),
+    QuoteBlock,
     Placeholder.configure({
       includeChildren: true,
       placeholder: ({ editor, node, pos }) => {
@@ -60,11 +108,13 @@ export function buildExtensions(
         // is-empty decoration; only their inner paragraph should carry text —
         // and a short label, so it never overflows tight flex layouts.
         if (node.type.name !== 'paragraph') return ''
-        const parentName = editor.state.doc.resolve(pos).parent.type.name
+        const $pos = editor.state.doc.resolve(pos)
+        const parentName = $pos.parent.type.name
         if (parentName === 'listItem') return 'List item'
         if (parentName === 'taskItem') return 'To-do'
         if (parentName === 'blockquote') return 'Quote'
         if (parentName === 'callout') return 'Note'
+        if (parentName === 'toggle') return $pos.index() === 0 ? 'Toggle' : ''
         return 'Write, or press "/" for blocks…'
       },
     }),
@@ -82,12 +132,19 @@ export function buildExtensions(
     // `---` still becomes a divider.
     Typography.configure({ emDash: false }),
     Callout,
+    Toggle,
+    DatabaseBlock,
+    ImageBlock,
+    HtmlBlock,
+    MediaPaste,
     PageLink,
     PageMention,
     MathInline,
     MathBlock,
     CardRefMark,
     TrailingNode,
+    ListEscape,
+    BlockSelect,
     ...(opts.slash ? [SlashCommand.configure({ suggestion: opts.slash })] : []),
     ...(opts.mention ? [MentionCommand.configure({ suggestion: opts.mention })] : []),
   ]

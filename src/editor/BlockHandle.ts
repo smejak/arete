@@ -13,19 +13,77 @@ const HANDLE_SVG =
   '<circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/>' +
   '<circle cx="9" cy="18.5" r="1.6"/><circle cx="15" cy="18.5" r="1.6"/></svg>'
 
-/** Resolve mouse coords to the position of the top-level block under them. */
+const isListType = (name: string) =>
+  name === 'bulletList' || name === 'orderedList' || name === 'taskList'
+
+/** Inside lists, each item is its own block: walk down from a list node to
+ * the item whose row contains `y`, recursing through nested lists. Driven by
+ * geometry (not the hovered element) so the margin and the text of the same
+ * row always resolve to the same item — the handle stays put. */
+function descendIntoLists(view: EditorView, pos: number, y: number): number {
+  let node = view.state.doc.nodeAt(pos)
+  while (node && isListType(node.type.name)) {
+    // Find the direct child (list item) whose rect spans y.
+    let childPos = pos + 1
+    let hitPos: number | null = null
+    let hitNode: typeof node | null = null
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i)
+      const dom = view.nodeDOM(childPos)
+      if (dom instanceof HTMLElement) {
+        const r = dom.getBoundingClientRect()
+        if (y >= r.top && y <= r.bottom) {
+          hitPos = childPos
+          hitNode = child
+          break
+        }
+      }
+      childPos += child.nodeSize
+    }
+    if (hitPos === null || !hitNode) return pos
+    // If y sits over a nested list inside the item, keep descending;
+    // otherwise the item itself is the block.
+    let inner = hitPos + 1
+    let nested: number | null = null
+    for (let i = 0; i < hitNode.childCount; i++) {
+      const c = hitNode.child(i)
+      if (isListType(c.type.name)) {
+        const dom = view.nodeDOM(inner)
+        if (dom instanceof HTMLElement) {
+          const r = dom.getBoundingClientRect()
+          if (y >= r.top && y <= r.bottom) {
+            nested = inner
+            break
+          }
+        }
+      }
+      inner += c.nodeSize
+    }
+    if (nested === null) return hitPos
+    pos = nested
+    node = view.state.doc.nodeAt(pos)
+  }
+  return pos
+}
+
+/** Resolve mouse coords to the block under them: the top-level block, except
+ * inside lists where each item gets its own handle. */
 function topBlockPos(view: EditorView, clientX: number, clientY: number): number | null {
   const editorRect = view.dom.getBoundingClientRect()
   // Clamp X into the content so hovering the left margin still hits the row.
   const x = Math.min(Math.max(clientX, editorRect.left + 2), editorRect.right - 2)
   const found = view.posAtCoords({ left: x, top: clientY })
   if (!found) return null
+  let top: number
   if (found.inside >= 0) {
     const $inside = view.state.doc.resolve(found.inside)
-    return $inside.depth === 0 ? found.inside : $inside.before(1)
+    top = $inside.depth === 0 ? found.inside : $inside.before(1)
+  } else {
+    const $pos = view.state.doc.resolve(found.pos)
+    if ($pos.depth < 1) return null
+    top = $pos.before(1)
   }
-  const $pos = view.state.doc.resolve(found.pos)
-  return $pos.depth >= 1 ? $pos.before(1) : null
+  return descendIntoLists(view, top, clientY)
 }
 
 /**
@@ -97,10 +155,14 @@ export const BlockHandle = Extension.create<BlockHandleOptions>({
             if (!(dom instanceof HTMLElement)) return hide()
             const shellRect = shell.getBoundingClientRect()
             const rect = dom.getBoundingClientRect()
+            // List items sit past their marker — park the handle left of the
+            // bullet/number instead of on top of it.
+            const type = view.state.doc.nodeAt(pos)?.type.name
+            const offset = type === 'listItem' || type === 'taskItem' ? 56 : 30
             currentPos = pos
             handle.style.display = 'grid'
             handle.style.top = `${rect.top - shellRect.top + 2}px`
-            handle.style.left = `${rect.left - shellRect.left - 30}px`
+            handle.style.left = `${rect.left - shellRect.left - offset}px`
           }
 
           const onMove = (event: MouseEvent) => {

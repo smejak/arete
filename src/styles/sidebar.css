@@ -299,3 +299,29 @@
   background: var(--bg-hover);
   color: var(--text);
 }
+
+/* --------------------------- pointer drag ghost --------------------------- */
+
+.tree-ghost {
+  position: fixed;
+  z-index: 1200;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-pop);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 10px;
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+}
+
+body.is-tree-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}

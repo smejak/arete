@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Check, FileDown, X } from 'lucide-react'
+import { Check, FileCode2, FileDown, FolderArchive, X } from 'lucide-react'
+import { strToU8 } from 'fflate'
 import { useStore } from '../store/store'
 import { buildShareZip, saveZip, shareCounts, type ShareOptions } from '../lib/share'
+import { buildHtmlExport } from '../lib/export-html'
 import { cx } from '../lib/util'
 
 export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () => void }) {
   const page = useStore(s => s.pages[pageId])
+  const [format, setFormat] = useState<'zip' | 'html'>('zip')
   const [subpages, setSubpages] = useState(true)
   const [cards, setCards] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -22,8 +25,14 @@ export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () =>
     setBusy(true)
     setMsg(null)
     try {
-      const zip = buildShareZip(pageId, { subpages, cards } satisfies ShareOptions)
-      const saved = await saveZip(zip.filename, zip.data)
+      let saved: boolean
+      if (format === 'html') {
+        const out = await buildHtmlExport(pageId, { subpages, cards })
+        saved = await saveZip(out.filename, strToU8(out.html), 'text/html')
+      } else {
+        const zip = buildShareZip(pageId, { subpages, cards } satisfies ShareOptions)
+        saved = await saveZip(zip.filename, zip.data)
+      }
       if (saved) onClose()
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err))
@@ -42,9 +51,35 @@ export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () =>
           </button>
         </div>
         <div className="modal-body">
+          <div className="share-formats">
+            <button
+              type="button"
+              className={cx('share-format', format === 'zip' && 'is-active')}
+              onClick={() => setFormat('zip')}
+            >
+              <FolderArchive size={15} strokeWidth={1.7} />
+              <span>
+                <strong>Markdown vault</strong>
+                <em>.zip — reopens in Arete</em>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={cx('share-format', format === 'html' && 'is-active')}
+              onClick={() => setFormat('html')}
+            >
+              <FileCode2 size={15} strokeWidth={1.7} />
+              <span>
+                <strong>Interactive HTML</strong>
+                <em>.html — view-only in any browser</em>
+              </span>
+            </button>
+          </div>
+
           <div className="share-note">
-            Exports plain markdown in a zip. Unzipped, it opens directly in Arete as a vault —
-            pages, hierarchy{cards ? ', and cards' : ''} intact.
+            {format === 'zip'
+              ? `Exports plain markdown in a zip. Unzipped, it opens directly in Arete as a vault — pages, hierarchy${cards ? ', and cards' : ''} intact.`
+              : `One self-contained file that looks like Arete, readable anywhere${cards ? ' — cards appear as chips beside the text they highlight, ready to review' : ''}.`}
           </div>
 
           <button type="button" className="share-toggle" onClick={() => setSubpages(o => !o)}>
@@ -79,7 +114,7 @@ export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () =>
               Cancel
             </button>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={download}>
-              <FileDown size={14} strokeWidth={2} /> Download zip
+              <FileDown size={14} strokeWidth={2} /> Download {format === 'html' ? 'HTML' : 'zip'}
             </button>
           </div>
         </div>
