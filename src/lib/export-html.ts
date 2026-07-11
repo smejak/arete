@@ -172,8 +172,11 @@ function blockHtml(node: JSONContent, ctx: Ctx): string {
     case 'taskList': return listHtml(node, ctx, 'task')
     case 'blockquote':
       return `<blockquote>${(node.content ?? []).map(c => blockHtml(c, ctx)).join('')}</blockquote>`
-    case 'callout':
-      return `<div class="x-callout"><span class="x-callout-emoji">${esc((node.attrs?.emoji as string) || '💡')}</span><div>${(node.content ?? []).map(c => blockHtml(c, ctx)).join('')}</div></div>`
+    case 'callout': {
+      const emoji = (node.attrs?.emoji as string) ?? ''
+      const badge = emoji ? `<span class="x-callout-emoji">${esc(emoji)}</span>` : ''
+      return `<div class="x-callout${emoji ? '' : ' no-emoji'}">${badge}<div>${(node.content ?? []).map(c => blockHtml(c, ctx)).join('')}</div></div>`
+    }
     case 'codeBlock':
       return `<pre><code>${esc((node.content ?? []).map(c => c.text ?? '').join(''))}</code></pre>`
     case 'horizontalRule': return '<hr>'
@@ -395,6 +398,7 @@ mark{background:var(--hl);color:inherit;border-radius:2.5px;padding:.5px 1px}
 blockquote{margin:6px 0;padding:1px 0 1px 16px;border-left:2.5px solid var(--text)}
 hr{border:none;height:1px;background:var(--border-strong);margin:11px 0}
 .x-callout{display:flex;gap:11px;background:var(--callout-bg);border-radius:10px;padding:13px 16px 13px 11px;margin:6px 0}
+.x-callout.no-emoji{padding-left:16px}
 .x-callout-emoji{flex:none;width:30px;height:30px;display:grid;place-items:center;font-size:18px}
 .x-tasks{list-style:none;padding-left:2px}
 .x-task{display:flex;gap:9px}
