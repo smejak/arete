@@ -382,11 +382,14 @@
 
 .dbt-gutter {
   position: absolute;
-  left: -46px;
+  left: -50px;
   display: flex;
   align-items: center;
   gap: 2px;
   height: 32px;
+  /* Bridge the strip between the controls and the table edge so the pointer
+     never leaves the table's hover tree on its way to the grip. */
+  padding-right: 18px;
   z-index: 3;
 }
 
