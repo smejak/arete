@@ -15,6 +15,8 @@ export interface FolderFS {
   kind: 'web' | 'tauri'
   read(path: string[]): Promise<string | null>
   write(path: string[], contents: string): Promise<void>
+  readBinary(path: string[]): Promise<Uint8Array | null>
+  writeBinary(path: string[], data: Uint8Array): Promise<void>
   remove(path: string[]): Promise<void>
   /** Entries of a directory; [] when it does not exist. */
   list(path: string[]): Promise<{ name: string; dir: boolean }[]>
@@ -72,6 +74,30 @@ function webFS(root: DirHandle): FolderFS & { handle: DirHandle } {
       const fh = await dir.getFileHandle(name, { create: true })
       const writable = await fh.createWritable()
       await writable.write(contents)
+      await writable.close()
+    },
+
+    async readBinary(path) {
+      const segments = [...path]
+      const name = segments.pop()!
+      const dir = await getDir(segments, false)
+      if (!dir) return null
+      try {
+        const fh = await dir.getFileHandle(name)
+        return new Uint8Array(await (await fh.getFile()).arrayBuffer())
+      } catch {
+        return null
+      }
+    },
+
+    async writeBinary(path, data) {
+      const segments = [...path]
+      const name = segments.pop()!
+      const dir = await getDir(segments, true)
+      if (!dir) throw new Error('vault folder unavailable: ' + path.join('/'))
+      const fh = await dir.getFileHandle(name, { create: true })
+      const writable = await fh.createWritable()
+      await writable.write(new Blob([data as BlobPart]))
       await writable.close()
     },
 
@@ -185,6 +211,20 @@ async function tauriFS(base: string): Promise<FolderFS> {
       const parent = path.slice(0, -1)
       if (parent.length) await fs.mkdir(join(parent), { recursive: true }).catch(() => {})
       await fs.writeTextFile(join(path), contents)
+    },
+
+    async readBinary(path) {
+      try {
+        return await fs.readFile(join(path))
+      } catch {
+        return null
+      }
+    },
+
+    async writeBinary(path, data) {
+      const parent = path.slice(0, -1)
+      if (parent.length) await fs.mkdir(join(parent), { recursive: true }).catch(() => {})
+      await fs.writeFile(join(path), data)
     },
 
     async remove(path) {

@@ -42,6 +42,84 @@ export function TreeDndProvider({ children }: { children: ReactNode }) {
   return <DndCtx.Provider value={value}>{children}</DndCtx.Provider>
 }
 
+/** Set when a pointer drag just finished, so the row's click doesn't fire. */
+let didJustDrag = false
+
+/**
+ * Pointer-based drag (HTML5 drag-and-drop never fires inside Tauri's
+ * WKWebView): press, move past a threshold, hit-test rows under the pointer
+ * for a before/after/inside zone, drop on release. A small ghost with the
+ * page title follows the cursor.
+ */
+function startTreeDrag(
+  e: React.PointerEvent,
+  id: string,
+  title: string,
+  dnd: DndState,
+  canDrop: (targetId: string) => boolean,
+  onDrop: (target: { key: string; zone: Zone } | null) => void,
+) {
+  const startX = e.clientX
+  const startY = e.clientY
+  let dragging = false
+  let ghost: HTMLDivElement | null = null
+  let current: { key: string; zone: Zone } | null = null
+
+  const hitTest = (x: number, y: number): { key: string; zone: Zone } | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null
+    if (!el) return null
+    const row = el.closest<HTMLElement>('[data-tree-id]')
+    if (row?.dataset.treeId && row.dataset.treeDroppable === 'true') {
+      const targetId = row.dataset.treeId
+      if (targetId === id || !canDrop(targetId)) return null
+      const r = row.getBoundingClientRect()
+      const frac = (y - r.top) / r.height
+      const zone: Zone = frac < 0.3 ? 'before' : frac > 0.7 ? 'after' : 'inside'
+      return { key: targetId, zone }
+    }
+    if (el.closest('[data-tree-root]')) return { key: '__root__', zone: 'after' }
+    return null
+  }
+
+  const move = (ev: PointerEvent) => {
+    if (!dragging) {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return
+      dragging = true
+      dnd.setDragId(id)
+      document.body.classList.add('is-tree-dragging')
+      ghost = document.createElement('div')
+      ghost.className = 'tree-ghost'
+      ghost.textContent = title
+      document.body.appendChild(ghost)
+    }
+    if (ghost) {
+      ghost.style.left = ev.clientX + 12 + 'px'
+      ghost.style.top = ev.clientY + 10 + 'px'
+    }
+    const target = hitTest(ev.clientX, ev.clientY)
+    current = target
+    dnd.setOver(target)
+  }
+
+  const up = () => {
+    window.removeEventListener('pointermove', move)
+    document.body.classList.remove('is-tree-dragging')
+    ghost?.remove()
+    if (dragging) {
+      didJustDrag = true
+      window.setTimeout(() => {
+        didJustDrag = false
+      }, 0)
+      onDrop(current)
+    }
+    dnd.setDragId(null)
+    dnd.setOver(null)
+  }
+
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up, { once: true })
+}
+
 export function PageTree({
   ids,
   section,
@@ -65,29 +143,8 @@ export function PageTree({
 /** Catch-all target below the tree: dropping here moves a page to root level. */
 export function RootDropZone() {
   const dnd = useContext(DndCtx)
-  const movePage = useStore(s => s.movePage)
   const active = dnd?.dragId && dnd.over?.key === '__root__'
-  return (
-    <div
-      className={cx('tree-tail', active && 'is-drop')}
-      onDragOver={e => {
-        if (!dnd?.dragId) return
-        e.preventDefault()
-        if (dnd.over?.key !== '__root__') dnd.setOver({ key: '__root__', zone: 'after' })
-      }}
-      onDragLeave={e => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node) && dnd?.over?.key === '__root__')
-          dnd.setOver(null)
-      }}
-      onDrop={e => {
-        e.preventDefault()
-        const d = dnd?.dragId
-        dnd?.setDragId(null)
-        dnd?.setOver(null)
-        if (d) movePage(d, { type: 'root-end' })
-      }}
-    />
-  )
+  return <div className={cx('tree-tail', active && 'is-drop')} data-tree-root="true" />
 }
 
 function TreeItem({
@@ -117,7 +174,6 @@ function TreeItem({
   if (!page) return null
 
   const dropZone = draggable && dnd?.dragId && dnd.over?.key === id ? dnd.over.zone : null
-  const dragAllowed = dnd?.dragId && dnd.dragId !== id && !inSubtree(pages, id, dnd.dragId)
 
   return (
     <>
@@ -126,38 +182,27 @@ function TreeItem({
         style={{ paddingLeft: 10 + depth * 14 }}
         role="treeitem"
         aria-expanded={expanded}
-        draggable={draggable || undefined}
-        onDragStart={e => {
-          e.dataTransfer.setData('text/plain', id)
-          e.dataTransfer.effectAllowed = 'move'
-          dnd?.setDragId(id)
-        }}
-        onDragEnd={() => {
-          dnd?.setDragId(null)
-          dnd?.setOver(null)
-        }}
-        onDragOver={e => {
-          if (!draggable || !dragAllowed) return
-          e.preventDefault()
-          e.dataTransfer.dropEffect = 'move'
-          const r = e.currentTarget.getBoundingClientRect()
-          const y = (e.clientY - r.top) / r.height
-          const zone: Zone = y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside'
-          if (dnd?.over?.key !== id || dnd.over.zone !== zone) dnd?.setOver({ key: id, zone })
-        }}
-        onDragLeave={e => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node) && dnd?.over?.key === id)
-            dnd.setOver(null)
-        }}
-        onDrop={e => {
-          e.preventDefault()
-          const d = dnd?.dragId
-          const o = dnd?.over
-          dnd?.setDragId(null)
-          dnd?.setOver(null)
-          if (d && o?.key === id) movePage(d, { type: o.zone, id })
+        data-tree-id={id}
+        data-tree-droppable={draggable ? 'true' : undefined}
+        onPointerDown={e => {
+          if (!draggable || !dnd || e.button !== 0) return
+          if ((e.target as HTMLElement).closest('button')) return
+          const state = useStore.getState()
+          startTreeDrag(
+            e,
+            id,
+            page.title || 'Untitled',
+            dnd,
+            targetId => !inSubtree(state.pages, targetId, id),
+            target => {
+              if (!target) return
+              if (target.key === '__root__') movePage(id, { type: 'root-end' })
+              else movePage(id, { type: target.zone, id: target.key })
+            },
+          )
         }}
         onClick={e => {
+          if (didJustDrag) return
           if (e.metaKey || e.ctrlKey) {
             useStore.getState().newTab({ view: 'page', pageId: id })
           } else {

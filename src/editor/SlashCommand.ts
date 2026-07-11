@@ -9,6 +9,7 @@ import {
   Heading3,
   ListTodo,
   List,
+  ListCollapse,
   ListOrdered,
   TextQuote,
   Minus,
@@ -16,11 +17,16 @@ import {
   Sigma,
   Radical,
   SquareCode,
+  Table,
+  FileCode2,
   FilePlus2,
+  Image as ImageIcon,
   Link as LinkIcon,
   type LucideIcon,
 } from 'lucide-react'
 import { pagePick, useStore } from '../store/store'
+import { saveMedia } from '../lib/media'
+import { pickFile } from './nodes/Media'
 
 export interface SlashItem {
   id: string
@@ -125,11 +131,26 @@ const ITEMS: SlashItem[] = [
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
   },
   {
+    id: 'toggle',
+    title: 'Toggle list',
+    description: 'Click to expand and collapse',
+    icon: ListCollapse,
+    keywords: ['collapse', 'expand', 'details', 'dropdown', '>'],
+    section: 'Blocks',
+    run: (editor, range) =>
+      insertBlock(
+        editor,
+        range,
+        { type: 'toggle', attrs: { open: true }, content: [{ type: 'paragraph' }] },
+        2,
+      ),
+  },
+  {
     id: 'quote',
     title: 'Quote',
     description: 'Set a line apart',
     icon: TextQuote,
-    keywords: ['blockquote', 'citation', '>'],
+    keywords: ['blockquote', 'citation', '"'],
     section: 'Blocks',
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
   },
@@ -165,6 +186,64 @@ const ITEMS: SlashItem[] = [
     keywords: ['snippet', 'pre', '```'],
     section: 'Blocks',
     run: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
+  },
+  {
+    id: 'table',
+    title: 'Table',
+    description: 'A database in table view',
+    icon: Table,
+    keywords: ['database', 'db', 'grid', 'rows', 'spreadsheet'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      const store = useStore.getState()
+      const dbId = store.createDatabase({ parentId: store.activePageId })
+      insertBlock(editor, range, { type: 'databaseBlock', attrs: { pageId: dbId, owner: true } })
+      // Drop the atom's NodeSelection (the table is its own interactive
+      // island) — park the caret in the paragraph after it instead.
+      editor.commands.setTextSelection(Math.min(editor.state.selection.to + 1, editor.state.doc.content.size))
+    },
+  },
+  {
+    id: 'image',
+    title: 'Image',
+    description: 'Upload from your computer',
+    icon: ImageIcon,
+    keywords: ['picture', 'photo', 'png', 'jpg', 'media', 'upload'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      void pickFile('image/*').then(file => {
+        if (!file) return
+        void saveMedia(file, file.name).then(rec => {
+          const sel = editor.state.selection
+          insertBlock(editor, { from: sel.from, to: sel.to }, {
+            type: 'imageBlock',
+            attrs: { mediaId: rec.id, name: rec.name },
+          })
+        })
+      })
+    },
+  },
+  {
+    id: 'html',
+    title: 'HTML',
+    description: 'Embed an interactive HTML file',
+    icon: FileCode2,
+    keywords: ['embed', 'iframe', 'web', 'media', 'file'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      void pickFile('.html,.htm').then(file => {
+        if (!file) return
+        void saveMedia(file, file.name).then(rec => {
+          const sel = editor.state.selection
+          insertBlock(editor, { from: sel.from, to: sel.to }, {
+            type: 'htmlBlock',
+            attrs: { mediaId: rec.id, name: rec.name },
+          })
+        })
+      })
+    },
   },
   {
     id: 'math-block',
