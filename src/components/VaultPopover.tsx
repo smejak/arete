@@ -1,21 +1,16 @@
 import { useState } from 'react'
-import { FolderOpen, HardDrive, RefreshCw, Unplug } from 'lucide-react'
-import {
-  createVaultFromWorkspace,
-  disconnectVault,
-  openVault,
-  reconnectVault,
-  useVault,
-} from '../lib/vault'
+import { FolderOpen, HardDrive, RefreshCw } from 'lucide-react'
+import { reconnectVault, switchVault, useVault } from '../lib/vault'
 import { fmtRelative } from '../lib/util'
 import { cx } from '../lib/util'
 import { Popover } from './Popover'
+
+const prettyPath = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 
 export function VaultButton() {
   const vault = useVault()
   const [at, setAt] = useState<DOMRect | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
-  const [armedOpen, setArmedOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const run = async (fn: () => Promise<string | null | void>) => {
@@ -30,16 +25,21 @@ export function VaultButton() {
       }
     } finally {
       setBusy(false)
-      setArmedOpen(false)
     }
   }
+
+  // Seamless: a successful switch just lands in the new workspace.
+  const doSwitch = () =>
+    run(async () => {
+      if (await switchVault()) setAt(null)
+    })
 
   return (
     <>
       <button
         type="button"
         className="icon-btn vault-btn"
-        title={vault.connected ? `Vault: ${vault.name}` : 'Vault — keep pages as local markdown'}
+        title={vault.connected ? `Vault: ${vault.name}` : 'Vault'}
         onClick={e => setAt(e.currentTarget.getBoundingClientRect())}
       >
         <HardDrive size={15} strokeWidth={1.7} />
@@ -67,8 +67,7 @@ export function VaultButton() {
 
           {!vault.supported ? (
             <div className="vault-note">
-              Folder vaults need Chrome, Edge, or the Arete desktop app — this browser has no way
-              to open folders.
+              This browser can’t open folders — use Chrome, Edge, or the Arete desktop app.
             </div>
           ) : vault.connected ? (
             <>
@@ -76,21 +75,23 @@ export function VaultButton() {
                 <FolderOpen size={14} strokeWidth={1.8} />
                 {vault.name}
               </div>
+              {vault.path && <div className="vault-path">{prettyPath(vault.path)}</div>}
               <div className="vault-note">
-                Pages live in this folder as markdown; cards, reviews, and history in{' '}
-                <code>.arete/</code>. Edits made outside Arete are read on the next launch.
+                Pages as markdown in this folder; cards &amp; history in <code>.arete/</code>.
               </div>
               <div className="vault-actions">
-                <button type="button" className="btn" disabled={busy} onClick={() => run(disconnectVault)}>
-                  <Unplug size={13} strokeWidth={1.9} /> Disconnect
+                <button type="button" className="btn" disabled={busy} onClick={doSwitch}>
+                  <FolderOpen size={13} strokeWidth={1.9} /> Switch folder…
                 </button>
               </div>
             </>
           ) : vault.state === 'permission' ? (
             <>
-              <div className="vault-note">
-                “{vault.name}” is remembered but the browser needs a fresh permission grant.
+              <div className="vault-name">
+                <FolderOpen size={14} strokeWidth={1.8} />
+                {vault.name}
               </div>
+              <div className="vault-note">The browser needs a fresh grant to reopen this folder.</div>
               <div className="vault-actions">
                 <button
                   type="button"
@@ -100,50 +101,25 @@ export function VaultButton() {
                     run(async () => ((await reconnectVault()) ? null : 'Permission was not granted.'))
                   }
                 >
-                  <RefreshCw size={13} strokeWidth={1.9} /> Reconnect vault
-                </button>
-                <button type="button" className="btn" disabled={busy} onClick={() => run(disconnectVault)}>
-                  Forget
+                  <RefreshCw size={13} strokeWidth={1.9} /> Reconnect
                 </button>
               </div>
             </>
           ) : (
             <>
               <div className="vault-note">
-                Keep everything as plain files in a folder you choose — pages as markdown, cards
-                and history in a hidden <code>.arete/</code> subfolder. Data never leaves this
-                machine.
+                Pick the folder this workspace lives in — pages as markdown, cards &amp; history in{' '}
+                <code>.arete/</code>.
               </div>
-              <div className="vault-actions vault-actions-col">
+              <div className="vault-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
                   disabled={busy}
-                  onClick={() => run(createVaultFromWorkspace)}
+                  onClick={doSwitch}
                 >
-                  <FolderOpen size={13} strokeWidth={1.9} /> Create vault from this workspace…
+                  <FolderOpen size={13} strokeWidth={1.9} /> Choose folder…
                 </button>
-                <button
-                  type="button"
-                  className={cx('btn', armedOpen && 'btn-danger')}
-                  disabled={busy}
-                  onClick={() => {
-                    if (!armedOpen) {
-                      setArmedOpen(true)
-                      setMsg('Opening a folder replaces the current workspace — click again to continue.')
-                      return
-                    }
-                    void run(openVault)
-                  }}
-                >
-                  <FolderOpen size={13} strokeWidth={1.9} />
-                  {armedOpen ? 'Yes, open and replace' : 'Open folder as vault…'}
-                </button>
-              </div>
-              <div className="vault-note vault-note-sub">
-                “Open folder” takes an existing Arete vault, any folder of markdown, or an
-                unzipped Notion export (Settings → Export → Markdown &amp; CSV) — Notion names and
-                links are cleaned up automatically.
               </div>
             </>
           )}

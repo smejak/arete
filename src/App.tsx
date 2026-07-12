@@ -47,7 +47,7 @@ export default function App() {
 
   useEffect(() => {
     useStore.getState().ensureTabs()
-    void import('./lib/vault').then(v => v.tryRestoreVault())
+    void import('./lib/vault').then(v => v.initVault())
   }, [])
 
   useEffect(() => {

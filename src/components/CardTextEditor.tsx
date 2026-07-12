@@ -1,14 +1,17 @@
 import { useMemo, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { buildCardExtensions } from '../editor/extensions'
+import type { SlashItem } from '../editor/SlashCommand'
 import { docToMarkdown, markdownToDoc } from '../lib/markdown'
 import { cx } from '../lib/util'
+import { SlashMenu, useSuggestionMenu } from './SlashMenu'
 
 const noLinks = () => null
 
 /**
- * A pocket Arete editor for card fields: live markdown and instant KaTeX,
- * exactly like pages. Values stay plain markdown strings, so cards remain
+ * A full Arete editor for card fields: live markdown, instant KaTeX, and the
+ * complete "/" block palette (images, HTML embeds, callouts, toggles…) minus
+ * page-only blocks. Values stay plain markdown strings, so cards remain
  * searchable, diffable in history, and readable in vault files.
  */
 export function CardTextEditor({
@@ -24,7 +27,11 @@ export function CardTextEditor({
 }) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
-  const extensions = useMemo(() => buildCardExtensions(placeholder), [placeholder])
+  const [slashView, slashSuggestion] = useSuggestionMenu<SlashItem>()
+  const extensions = useMemo(
+    () => buildCardExtensions(placeholder, { slash: slashSuggestion }),
+    [placeholder, slashSuggestion],
+  )
   const initial = useRef(markdownToDoc(value, noLinks).content).current
 
   const editor = useEditor({
@@ -39,6 +46,7 @@ export function CardTextEditor({
   return (
     <div className="card-editor">
       <EditorContent editor={editor} />
+      {slashView && <SlashMenu view={slashView} />}
     </div>
   )
 }

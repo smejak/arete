@@ -20,7 +20,7 @@ import { PageMention } from './nodes/PageMention'
 import { MathBlock, MathInline } from './nodes/Math'
 import { CardRefMark } from './marks/CardRef'
 import { TrailingNode } from './TrailingNode'
-import { SlashCommand, type SlashItem } from './SlashCommand'
+import { CARD_SLASH_EXCLUDE, filterSlashItems, SlashCommand, type SlashItem } from './SlashCommand'
 import { MentionCommand, type MentionEntry } from './MentionCommand'
 
 /** `>` belongs to toggles now (like Notion), so quotes wrap on `"` instead —
@@ -60,9 +60,13 @@ const ListEscape = Extension.create({
   },
 })
 
-/** Compact schema for flashcard fronts/backs: the same live-markdown feel as
- * pages (marks, lists, code, KaTeX) without page-level machinery. */
-export function buildCardExtensions(placeholder: string): Extensions {
+/** Card fronts/backs are full Arete editors — every block a page can hold
+ * (callouts, toggles, images, HTML embeds, KaTeX, slash menu) except the
+ * page-coupled machinery: databases, subpages, mentions, card refs. */
+export function buildCardExtensions(
+  placeholder: string,
+  opts: { slash?: Partial<SuggestionOptions<SlashItem>> } = {},
+): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -71,7 +75,15 @@ export function buildCardExtensions(placeholder: string): Extensions {
     }),
     QuoteBlock,
     Placeholder.configure({
-      placeholder: ({ node }) => (node.type.name === 'paragraph' ? placeholder : ''),
+      includeChildren: true,
+      placeholder: ({ node, editor, pos }) => {
+        if (node.type.name === 'heading') return `Heading ${node.attrs.level}`
+        if (node.type.name !== 'paragraph') return ''
+        const $pos = editor.state.doc.resolve(pos)
+        const parentName = $pos.parent.type.name
+        if (parentName !== 'doc') return ''
+        return placeholder
+      },
     }),
     TaskList,
     TaskItem.configure({ nested: true }),
@@ -79,9 +91,17 @@ export function buildCardExtensions(placeholder: string): Extensions {
     Highlight,
     Underline,
     Typography.configure({ emDash: false }),
+    Callout,
+    Toggle,
+    ImageBlock,
+    HtmlBlock,
+    MediaPaste,
     MathInline,
     MathBlock,
     ListEscape,
+    ...(opts.slash
+      ? [SlashCommand.configure({ suggestion: { items: ({ query }) => filterSlashItems(query, CARD_SLASH_EXCLUDE), ...opts.slash } })]
+      : []),
   ]
 }
 
