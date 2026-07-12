@@ -12,7 +12,7 @@
 
 export interface FolderFS {
   name: string
-  kind: 'web' | 'tauri'
+  kind: 'web' | 'tauri' | 'ios'
   read(path: string[]): Promise<string | null>
   write(path: string[], contents: string): Promise<void>
   readBinary(path: string[]): Promise<Uint8Array | null>
@@ -289,7 +289,7 @@ export async function forgetVault() {
   await idbDelete('handle')
 }
 
-export type RestoreResult = { fs: FolderFS } | { permission: string } | null
+export type RestoreResult = { fs: FolderFS; tauriPath?: string } | { permission: string } | null
 
 /** Re-attach the remembered vault on launch, if possible without a prompt. */
 export async function restoreVault(): Promise<RestoreResult> {
@@ -299,7 +299,7 @@ export async function restoreVault(): Promise<RestoreResult> {
     const fs = await import('@tauri-apps/plugin-fs')
     const there = await fs.exists(path).catch(() => false)
     if (!there) return null
-    return { fs: await tauriFS(path) }
+    return { fs: await tauriFS(path), tauriPath: path }
   }
   const handle = await idbGet<DirHandle>('handle').catch(() => undefined)
   if (!handle) return null
@@ -317,6 +317,21 @@ export async function requestVaultPermission(): Promise<FolderFS | null> {
   const perm = await (handle as any).requestPermission?.({ mode: 'readwrite' })
   if (perm !== 'granted') return null
   return webFS(handle)
+}
+
+/** Desktop only: the out-of-the-box vault, ~/Documents/Arete — created so the
+ * workspace is folder-backed from the very first launch. */
+export async function defaultVault(): Promise<{ fs: FolderFS; tauriPath: string } | null> {
+  if (!isTauriEnv()) return null
+  try {
+    const pathApi = await import('@tauri-apps/api/path')
+    const fs = await import('@tauri-apps/plugin-fs')
+    const dir = await pathApi.join(await pathApi.documentDir(), 'Arete')
+    await fs.mkdir(dir, { recursive: true })
+    return { fs: await tauriFS(dir), tauriPath: dir }
+  } catch {
+    return null // e.g. macOS denied Documents access — stay folderless
+  }
 }
 
 /** The absolute path of a picked Tauri folder (needed for persistence). */

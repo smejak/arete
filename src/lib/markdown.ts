@@ -231,6 +231,14 @@ const INLINE_PATTERNS: InlinePattern[] = [
     handle: (m, r) => withMark(parseInline(m[1], r), { type: 'underline' }),
   },
   {
+    // Bold+italic serializes as ***text*** — must match before plain bold,
+    // which would otherwise eat **text** out of the middle and strand a
+    // literal * on each side (dropping the italic).
+    re: /\*\*\*([^*\n]+)\*\*\*/,
+    handle: (m, r) =>
+      withMark(withMark(parseInline(m[1], r), { type: 'italic' }), { type: 'bold' }),
+  },
+  {
     re: /\*\*([^*]+(?:\*(?!\*)[^*]*)*)\*\*/,
     handle: (m, r) => withMark(parseInline(m[1], r), { type: 'bold' }),
   },

@@ -31,6 +31,9 @@ export interface CreateCardInput {
 interface SrsState {
   cards: Record<string, SrsCard>
   logs: ReviewLogEntry[]
+  /** Tombstones (id → deletedAt) so deletions replicate across devices
+   * through the vault instead of resurrecting on merge. */
+  graveyard: Record<string, number>
 
   createCard: (input: CreateCardInput) => string
   updateCard: (
@@ -58,6 +61,7 @@ export const useSrsStore = create<SrsState>()(
     (set, get) => ({
       cards: {},
       logs: [],
+      graveyard: {},
 
       createCard: input => {
         const id = input.id ?? crypto.randomUUID()
@@ -77,7 +81,11 @@ export const useSrsStore = create<SrsState>()(
           createdAt: now,
           updatedAt: now,
         }
-        set(s => ({ cards: { ...s.cards, [id]: card } }))
+        set(s => {
+          const graveyard = { ...s.graveyard }
+          delete graveyard[id]
+          return { cards: { ...s.cards, [id]: card }, graveyard }
+        })
         recordCardVersion(card, 'create', scheduleLabel(card))
         appendEvent({ kind: 'card-create', label: snippet(card.front), cardId: id, pageId: input.pageId ?? undefined })
         snapshotSourcePage(input.pageId)
@@ -120,7 +128,7 @@ export const useSrsStore = create<SrsState>()(
         set(s => {
           const cards = { ...s.cards }
           delete cards[id]
-          return { cards }
+          return { cards, graveyard: { ...s.graveyard, [id]: Date.now() } }
         })
         appendEvent({ kind: 'card-delete', label: snippet(prev.front), cardId: id, pageId: prev.pageId ?? undefined })
       },
@@ -138,6 +146,9 @@ export const useSrsStore = create<SrsState>()(
           lastCorrectAt: result.lastCorrectAt,
           archived: result.archived,
           archivedAt: result.archivedAt,
+          // Reviews count as updates so cross-device merge can pick the
+          // freshest copy of a card by timestamp alone.
+          updatedAt: now.getTime(),
         }
         const entry: ReviewLogEntry = {
           id: crypto.randomUUID(),
@@ -183,7 +194,7 @@ export const useSrsStore = create<SrsState>()(
     {
       name: 'arete-srs',
       version: 1,
-      partialize: s => ({ cards: s.cards, logs: s.logs }),
+      partialize: s => ({ cards: s.cards, logs: s.logs, graveyard: s.graveyard }),
     },
   ),
 )

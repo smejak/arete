@@ -63,7 +63,7 @@ export function insertBlock(
   }
 }
 
-const ITEMS: SlashItem[] = [
+const ALL_ITEMS: SlashItem[] = [
   {
     id: 'text',
     title: 'Text',
@@ -297,11 +297,15 @@ const ITEMS: SlashItem[] = [
   },
 ]
 
-export function filterSlashItems(query: string): SlashItem[] {
+/** Blocks that only make sense inside a page — hidden in card editors. */
+export const CARD_SLASH_EXCLUDE: ReadonlySet<string> = new Set(['table', 'page', 'link-page'])
+
+export function filterSlashItems(query: string, exclude?: ReadonlySet<string>): SlashItem[] {
   // Spaces are allowed ("/code block"), so hide once the query stops looking
   // like a block name and starts looking like a sentence.
   if (query.length > 24 || query.trim().split(/\s+/).length > 3) return []
 
+  const ITEMS = exclude ? ALL_ITEMS.filter(i => !exclude.has(i.id)) : ALL_ITEMS
   const q = query.toLowerCase().trim()
   if (!q) return ITEMS
   const score = (item: SlashItem): number => {

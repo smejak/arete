@@ -91,7 +91,16 @@ export const Toggle = Node.create({
   },
 
   addInputRules() {
-    return [wrappingInputRule({ find: /^\s*>\s$/, type: this.type })]
+    return [
+      wrappingInputRule({
+        find: /^\s*>\s$/,
+        type: this.type,
+        // Never merge into an adjacent toggle: the default same-type join
+        // (right for bullet lists) would swallow the new toggle into the
+        // hidden body of a collapsed one directly above.
+        joinPredicate: () => false,
+      }),
+    ]
   },
 
   addKeyboardShortcuts() {
@@ -146,13 +155,33 @@ export const Toggle = Node.create({
             }
             return true
           }
-          // Enter on a collapsed summary writes below the toggle, not into
-          // the hidden body. (Open toggles split into a first child instead.)
+          // Enter on an EMPTY childless summary dissolves the toggle into a
+          // paragraph — the way an empty bullet ends a list.
+          if (
+            inSummary($from, d) &&
+            toggle.childCount === 1 &&
+            toggle.child(0).content.size === 0
+          ) {
+            if (dispatch) {
+              const pos = $from.before(d)
+              tr.replaceWith(pos, pos + toggle.nodeSize, state.schema.nodes.paragraph.create())
+              tr.setSelection(TextSelection.create(tr.doc, pos + 1))
+              tr.scrollIntoView()
+            }
+            return true
+          }
+          // Enter on a collapsed summary chains a fresh collapsed toggle
+          // below, like list items continue. (Open toggles split into a
+          // first child instead.)
           if (inSummary($from, d) && !toggle.attrs.open) {
             if (dispatch) {
               const after = $from.after(d)
-              tr.insert(after, state.schema.nodes.paragraph.create())
-              tr.setSelection(TextSelection.create(tr.doc, after + 1))
+              const next = this.type.create(
+                { open: false },
+                state.schema.nodes.paragraph.create(),
+              )
+              tr.insert(after, next)
+              tr.setSelection(TextSelection.create(tr.doc, after + 2))
               tr.scrollIntoView()
             }
             return true

@@ -9,7 +9,7 @@ import { isTauriEnv } from './fs-adapter'
 /**
  * Share a page as a zip of plain markdown — optionally with its subpages and
  * with the flashcards that belong to (or reference) those pages. The zip is a
- * miniature vault: unzip it and "Open folder as vault" restores pages *and*
+ * miniature vault: unzip it and "Switch folder" onto it restores pages *and*
  * cards on the receiving side.
  */
 

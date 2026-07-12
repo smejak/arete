@@ -25,7 +25,13 @@ export function Popover({
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    setPos(placeFloating(anchor, { width: el.offsetWidth, height: el.offsetHeight }, { align, gap }))
+    const place = () =>
+      setPos(placeFloating(anchor, { width: el.offsetWidth, height: el.offsetHeight }, { align, gap }))
+    place()
+    // Content can grow while open (status lines, messages) — keep it on screen.
+    const ro = new ResizeObserver(place)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [anchor, align, gap])
 
   useEffect(() => {

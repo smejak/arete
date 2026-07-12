@@ -1674,6 +1674,17 @@
   padding: 2px 12px 6px;
 }
 
+.vault-path {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  padding: 0 12px 6px;
+  margin-top: -4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .vault-note {
   font-size: 12px;
   line-height: 1.55;
@@ -1703,14 +1714,8 @@
   border: 1px solid var(--border);
 }
 
-.vault-actions .btn.btn-primary,
-.vault-actions .btn.btn-danger {
+.vault-actions .btn.btn-primary {
   border-color: transparent;
-}
-
-.vault-actions-col {
-  flex-direction: column;
-  align-items: stretch;
 }
 
 .vault-msg {
@@ -1718,11 +1723,6 @@
   line-height: 1.5;
   color: var(--code-inline);
   padding: 8px 12px 0;
-}
-
-.vault-note-sub {
-  padding-top: 8px;
-  color: var(--text-3);
 }
 
 /* ------------------------------ page history ----------------------------- */
