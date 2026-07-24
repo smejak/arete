@@ -108,6 +108,54 @@
   margin: 5px 4px;
 }
 
+.textsize-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-right: 10px;
+}
+
+.textsize-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ts-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-2);
+}
+
+.ts-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.ts-btn:disabled {
+  opacity: 0.35;
+  background: none;
+}
+
+.ts-val {
+  min-width: 42px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 3px 4px;
+}
+
+.ts-val:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .menu-note {
   font-size: 12px;
   font-weight: 500;
@@ -416,6 +464,75 @@
 .emoji-cell:hover {
   background: var(--bg-hover);
   transform: scale(1.16);
+}
+
+/* emoji / open-source icon tabs */
+.pop-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px 2px;
+}
+
+.pop-tab {
+  flex: 1;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  border-radius: 7px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.pop-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.pop-tab.is-active {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.icon-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 10px 2px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.icon-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.icon-grid {
+  max-height: 232px;
+}
+
+.icon-cell {
+  color: var(--text);
+}
+
+.icon-cell:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  transform: scale(1.12);
+}
+
+.icon-note {
+  padding: 2px 12px 10px;
+  font-size: 11.5px;
+  color: var(--text-2);
 }
 
 /* ------------------------------ cover picker ----------------------------- */

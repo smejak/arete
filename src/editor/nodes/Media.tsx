@@ -151,7 +151,12 @@ export const ImageBlock = Node.create({
 // HTML embed block
 // ---------------------------------------------------------------------------
 
-const EMBED_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox'
+// No `allow-same-origin` (the frame stays a null origin, walled off from the
+// app, its Tauri IPC, and the vault) and no popups: an embedded flashcard HTML
+// file has no reason to open windows, and `allow-popups-to-escape-sandbox`
+// would let one navigate to an un-sandboxed page (phishing). Scripts stay
+// enabled for interactive embeds; on iOS the app CSP blocks their network egress.
+const EMBED_SANDBOX = 'allow-scripts'
 
 function HtmlView({ node, selected }: NodeViewProps) {
   const rawText = useMediaText(node.attrs.mediaId as string)

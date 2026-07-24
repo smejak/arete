@@ -234,9 +234,141 @@
 }
 
 .page {
+  position: relative;
   width: min(708px, 100% - 96px);
   margin: 0 auto;
   animation: page-enter 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* -------------------------------- footnotes ------------------------------- */
+
+.fn-ref {
+  display: inline-block;
+  min-width: 1.15em;
+  padding: 0 0.18em;
+  margin: 0 1px;
+  text-align: center;
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: super;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.fn-ref::after {
+  content: attr(data-n);
+}
+
+.fn-ref.ProseMirror-selectednode {
+  background: var(--glow);
+}
+
+.fn-margin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% + 26px);
+  width: 200px;
+  pointer-events: none;
+}
+
+/* When the centered column leaves no right margin, the page leans left and
+   narrows a touch to guarantee its notes a column (set by FootnoteMargin).
+   56px keeps the six-dot handles inside the scroller. */
+.page.fn-lean {
+  margin-left: 56px;
+  margin-right: 0;
+  width: min(708px, calc(100% - 204px));
+}
+
+.fn-note {
+  position: absolute;
+  width: 100%;
+  pointer-events: auto;
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.5;
+  color: var(--text-2);
+  border-radius: 9px;
+  padding: 6px 9px 7px;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  cursor: pointer;
+}
+
+.fn-note.is-hot {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.fn-note:hover {
+  background: var(--bg-hover);
+}
+
+.fn-note.is-editing {
+  background: var(--bg-pop);
+  border-color: var(--border);
+  box-shadow: 0 6px 20px -10px rgba(15, 25, 20, 0.25);
+  cursor: auto;
+}
+
+.fn-note.is-floating {
+  position: static;
+  width: 300px;
+  border: none;
+  box-shadow: none;
+}
+
+.fn-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1px;
+}
+
+.fn-note-n {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.fn-note-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+
+.fn-note-x:hover {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.fn-note .card-side .tiptap,
+.fn-note .card-editor .tiptap {
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+
+.fn-note .card-side p,
+.fn-note .card-editor p {
+  padding: 1px 0;
+}
+
+.fn-note-body :first-child {
+  margin-top: 0;
+}
+
+/* Margin notes disappear with the margin; the popover takes over. */
+@media (max-width: 1180px) {
+  .peek-body .fn-margin {
+    display: none;
+  }
 }
 
 @keyframes page-enter {
@@ -322,7 +454,7 @@
   width: 100%;
   resize: none;
   overflow: hidden;
-  font-size: 38px;
+  font-size: calc(38px * var(--text-scale, 1));
   font-weight: 700;
   letter-spacing: -0.022em;
   line-height: 1.18;
@@ -349,7 +481,7 @@
 .page.font-mono .page-title {
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: 32px;
+  font-size: calc(32px * var(--text-scale, 1));
   letter-spacing: -0.02em;
 }
 

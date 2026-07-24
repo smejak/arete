@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { PageIcon } from '../lib/icon'
 import { pagePick, useStore } from '../store/store'
 import { ancestorsOf, extractText } from '../lib/tree'
 import type { Page } from '../store/types'
@@ -107,7 +108,7 @@ export function SearchModal() {
                     onClick={() => choose(p)}
                   >
                     <span className="search-item-icon">
-                      {p.icon ?? <FileText size={15} strokeWidth={1.7} />}
+                      <PageIcon icon={p.icon} size={15} strokeWidth={1.7} />
                     </span>
                     <span className="search-item-text">
                       <span className="search-item-title">{p.title || 'Untitled'}</span>

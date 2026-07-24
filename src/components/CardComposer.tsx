@@ -1,8 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   CalendarClock,
+  ChevronDown,
   Highlighter,
+  Inbox,
   Maximize2,
   Minimize2,
   Plus,
@@ -10,10 +12,14 @@ import {
   Timer,
   X,
 } from 'lucide-react'
-import type { CardType, RoutineConfig, SrsCard, TempConfig } from '../store/types'
+import type { CardType, Page, RoutineConfig, SrsCard, TempConfig } from '../store/types'
+import { useStore } from '../store/store'
 import { localDay } from '../lib/srs'
+import { childrenOf } from '../lib/tree'
 import { cx } from '../lib/util'
+import { PageIcon } from '../lib/icon'
 import { CardTextEditor } from './CardTextEditor'
+import { Popover } from './Popover'
 
 // ---------------------------------------------------------------------------
 // Draft model shared by the composer and the card editor
@@ -23,6 +29,8 @@ export interface CardDraft {
   front: string
   back: string
   tagsText: string
+  /** The page acting as this card's deck; null = unfiled. */
+  pageId: string | null
   type: CardType
   routine: RoutineConfig
   temp: TempConfig
@@ -47,6 +55,7 @@ export const emptyDraft = (): CardDraft => ({
   front: '',
   back: '',
   tagsText: '',
+  pageId: null,
   type: 'standard',
   routine: defaultRoutine(),
   temp: defaultTemp(),
@@ -56,6 +65,7 @@ export const draftFromCard = (card: SrsCard): CardDraft => ({
   front: card.front,
   back: card.back,
   tagsText: card.tags.join(', '),
+  pageId: card.pageId ?? null,
   type: card.type,
   routine: card.routine ?? defaultRoutine(),
   temp: card.temp ?? defaultTemp(),
@@ -71,6 +81,85 @@ const TYPES: { key: CardType; label: string; icon: typeof Repeat; blurb: string 
 ]
 
 // ---------------------------------------------------------------------------
+// Deck picker — pages act as decks, mirroring the iPhone composer
+// ---------------------------------------------------------------------------
+
+function flattenPages(pages: Record<string, Page>): { page: Page; depth: number }[] {
+  const out: { page: Page; depth: number }[] = []
+  const walk = (parentId: string | null, depth: number) => {
+    for (const p of childrenOf(pages, parentId)) {
+      out.push({ page: p, depth })
+      walk(p.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return out
+}
+
+function DeckRow({ pageId, onPick }: { pageId: string | null; onPick: (id: string | null) => void }) {
+  const pages = useStore(s => s.pages)
+  const [at, setAt] = useState<DOMRect | null>(null)
+  const flat = useMemo(() => flattenPages(pages), [pages])
+  const deck = pageId ? pages[pageId] : null
+  const pick = (id: string | null) => {
+    onPick(id)
+    setAt(null)
+  }
+  return (
+    <>
+      <div className="cf-label">Deck</div>
+      <button
+        type="button"
+        className="cf-deck"
+        onClick={e => setAt(e.currentTarget.getBoundingClientRect())}
+      >
+        <span className="cf-deck-cur">
+          {deck ? (
+            <>
+              <span className="cf-deck-icon">
+                <PageIcon icon={deck.icon} size={13} strokeWidth={1.8} />
+              </span>
+              {deck.title || 'Untitled'}
+            </>
+          ) : (
+            <>
+              <Inbox size={13} strokeWidth={1.8} /> Unfiled
+            </>
+          )}
+        </span>
+        <ChevronDown size={13} strokeWidth={2} />
+      </button>
+      {at && (
+        <Popover anchor={at} onClose={() => setAt(null)} className="deck-pop">
+          <button
+            type="button"
+            className={cx('deck-row', pageId === null && 'is-active')}
+            onClick={() => pick(null)}
+          >
+            <Inbox size={13} strokeWidth={1.8} />
+            <span className="deck-row-title">Unfiled — standalone card</span>
+          </button>
+          {flat.map(({ page, depth }) => (
+            <button
+              key={page.id}
+              type="button"
+              className={cx('deck-row', pageId === page.id && 'is-active')}
+              style={{ paddingLeft: 10 + depth * 14 }}
+              onClick={() => pick(page.id)}
+            >
+              <span className="cf-deck-icon">
+                <PageIcon icon={page.icon} size={13} strokeWidth={1.8} />
+              </span>
+              <span className="deck-row-title">{page.title || 'Untitled'}</span>
+            </button>
+          ))}
+        </Popover>
+      )}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
 
@@ -78,10 +167,14 @@ export function CardForm({
   draft,
   onChange,
   autoFocus = false,
+  withDeck = false,
 }: {
   draft: CardDraft
   onChange: (next: CardDraft) => void
   autoFocus?: boolean
+  /** Show the deck (page) picker — used where a card isn't already bound
+   * to a page by its highlights. */
+  withDeck?: boolean
 }) {
   const patch = (p: Partial<CardDraft>) => onChange({ ...draft, ...p })
   const patchRoutine = (p: Partial<RoutineConfig>) => patch({ routine: { ...draft.routine, ...p } })
@@ -96,13 +189,13 @@ export function CardForm({
       <CardTextEditor
         value={draft.front}
         autoFocus={autoFocus}
-        placeholder="The question, cue, or mantra… markdown and $math$ render live"
+        placeholder='Write the question, or press "/" for blocks…'
         onChange={front => patch({ front })}
       />
       <div className="cf-label">Back</div>
       <CardTextEditor
         value={draft.back}
-        placeholder="The answer — optional for reminders"
+        placeholder='Write the answer, or press "/" for blocks…'
         onChange={back => patch({ back })}
       />
       <label className="cf-label" htmlFor="cf-tags">Tags</label>
@@ -113,6 +206,8 @@ export function CardForm({
         placeholder="comma, separated"
         onChange={e => patch({ tagsText: e.target.value })}
       />
+
+      {withDeck && <DeckRow pageId={draft.pageId} onPick={pageId => patch({ pageId })} />}
 
       <div className="cf-label">Schedule</div>
       <div className="cf-types">

@@ -17,7 +17,9 @@ import {
   Sigma,
   Radical,
   SquareCode,
+  Superscript,
   Table,
+  Grid2x2,
   FileCode2,
   FilePlus2,
   Image as ImageIcon,
@@ -204,6 +206,21 @@ const ALL_ITEMS: SlashItem[] = [
     },
   },
   {
+    id: 'simple-table',
+    title: 'Simple table',
+    description: 'Plain rows and columns of text',
+    icon: Grid2x2,
+    keywords: ['markdown', 'grid', 'cells', 'columns', 'rows'],
+    section: 'Blocks',
+    run: (editor, range) =>
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({ rows: 3, cols: 2, withHeaderRow: true })
+        .run(),
+  },
+  {
     id: 'image',
     title: 'Image',
     description: 'Upload from your computer',
@@ -243,6 +260,28 @@ const ALL_ITEMS: SlashItem[] = [
           })
         })
       })
+    },
+  },
+  {
+    id: 'footnote',
+    title: 'Footnote',
+    description: 'A small note in the margin',
+    icon: Superscript,
+    keywords: ['^', 'sidenote', 'margin', 'note', 'annotation'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      const id = crypto.randomUUID()
+      // No .focus(): the margin editor takes focus the moment it opens, and
+      // refocusing the page here would race it and swallow the first keys.
+      editor
+        .chain()
+        .deleteRange(range)
+        .insertContent({ type: 'footnote', attrs: { id, md: '' } })
+        .command(({ tr }) => {
+          tr.setMeta('footnoteCreated', id)
+          return true
+        })
+        .run()
     },
   },
   {

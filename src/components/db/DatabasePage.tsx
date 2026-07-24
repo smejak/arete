@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '../../store/store'
+import { PageIcon } from '../../lib/icon'
 import { EmojiPicker } from '../EmojiPicker'
 import { DatabaseTable } from './DatabaseTable'
 
@@ -32,7 +33,7 @@ export function DatabasePage({ pageId }: { pageId: string }) {
               title="Change icon"
               onClick={e => setIconPicker(e.currentTarget.getBoundingClientRect())}
             >
-              {page.icon}
+              <PageIcon icon={page.icon} size={52} strokeWidth={1.5} />
             </button>
           )}
           <textarea
@@ -51,6 +52,7 @@ export function DatabasePage({ pageId }: { pageId: string }) {
         <EmojiPicker
           anchor={iconPicker}
           allowRemove
+          allowIcons
           onClose={() => setIconPicker(null)}
           onPick={emoji => {
             setIcon(page.id, emoji)

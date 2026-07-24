@@ -3,7 +3,6 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  FileText,
   GraduationCap,
   Layers,
   PanelLeftOpen,
@@ -12,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useStore, type Tab } from '../store/store'
 import { cx } from '../lib/util'
+import { PageIcon } from '../lib/icon'
 import { isTauriEnv } from '../lib/fs-adapter'
 
 // Minimal shape of the Tauri window handle we use for dragging the frameless
@@ -42,7 +42,7 @@ function TabChip({ tab, single }: { tab: Tab; single: boolean }) {
   let label: string
   if (tab.loc.view === 'page') {
     const page = tab.loc.pageId ? pages[tab.loc.pageId] : null
-    icon = page?.icon ?? <FileText size={12} strokeWidth={1.8} />
+    icon = <PageIcon icon={page?.icon} size={12} strokeWidth={1.8} />
     label = page ? page.title || 'Untitled' : 'Untitled'
   } else {
     const meta = VIEW_META[tab.loc.view]

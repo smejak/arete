@@ -2,7 +2,7 @@
 
 .tiptap {
   outline: none;
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale, 1));
   line-height: 1.62;
   color: var(--text);
   caret-color: var(--accent);
@@ -11,13 +11,13 @@
 
 .page.font-serif .tiptap {
   font-family: var(--font-serif);
-  font-size: 16.5px;
+  font-size: calc(16.5px * var(--text-scale, 1));
   line-height: 1.7;
 }
 
 .page.font-mono .tiptap {
   font-family: var(--font-mono);
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--text-scale, 1));
   line-height: 1.7;
 }
 
@@ -188,6 +188,44 @@
   border-radius: 0;
   font-size: 13.5px;
   line-height: 1.65;
+}
+
+/* --------------------------------- table --------------------------------- */
+/* Simple (markdown) tables — the div-based database grid (.dbt) is separate. */
+
+.tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--border-strong);
+  padding: 4px 10px;
+  vertical-align: top;
+  text-align: left;
+  min-width: 48px;
+  position: relative; /* anchors the cell-selection wash */
+}
+
+.tiptap th {
+  font-weight: 600;
+  background: var(--bg-hover);
+}
+
+.tiptap th p,
+.tiptap td p {
+  padding: 1.5px 0;
+}
+
+/* prosemirror-tables cell selection — the alpenglow wash, like other blocks */
+.tiptap .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--glow);
+  pointer-events: none;
 }
 
 /* --------------------------------- divider ------------------------------- */
@@ -367,6 +405,13 @@
 
 .plb:hover {
   background: var(--bg-hover);
+}
+
+/* Dragging a subpage over this one: drop to nest inside it. */
+.page-link-block.drop-into .plb {
+  background: var(--accent-soft);
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
 }
 
 .plb[disabled] {
@@ -567,6 +612,40 @@
   margin-top: 7px;
 }
 
+.math-unwrap {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.math-unwrap:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* Drag image for multi-block moves: a small "N blocks" pill. */
+.drag-ghost {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-pop, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
 /* ------------------------------ block handle ------------------------------ */
 
 .editor-shell {
@@ -576,8 +655,8 @@
 .block-handle {
   position: absolute;
   z-index: 40;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px; /* refined per block: matches the first line box */
   display: grid;
   place-items: center;
   border-radius: 6px;

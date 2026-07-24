@@ -25,12 +25,15 @@ function MathEditor({
   block,
   onSave,
   onCancel,
+  onUnwrap,
 }: {
   value: string
   anchor: DOMRect
   block: boolean
   onSave: (latex: string) => void
   onCancel: () => void
+  /** Replace the equation with its literal $…$ text (inline only). */
+  onUnwrap?: (draft: string) => void
 }) {
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLDivElement>(null)
@@ -83,6 +86,16 @@ function MathEditor({
       />
       <div className="math-hint">
         <kbd className="kbd">↵</kbd> save · <kbd className="kbd">esc</kbd> cancel · KaTeX
+        {onUnwrap && (
+          <button
+            type="button"
+            className="math-unwrap"
+            title="Replace the equation with its plain $…$ text"
+            onClick={() => onUnwrap(draft)}
+          >
+            $ as text
+          </button>
+        )}
       </div>
     </div>,
     document.body,
@@ -134,12 +147,32 @@ function useMathView({ node, updateAttributes, editor, getPos, deleteNode }: Nod
     refocus()
   }
 
+  // Escape hatch for false positives ("$AAPL$"): the node becomes its own
+  // literal $…$ text. The markdown layer escapes it so the unwrap sticks
+  // across save/reload.
+  const unwrap = (draft: string) => {
+    setEditing(false)
+    if (typeof getPos !== 'function') return
+    const text = draft.trim() || latex
+    const { view } = editor
+    const pos = getPos()
+    const tr = view.state.tr
+    if (text) {
+      tr.replaceWith(pos, pos + node.nodeSize, view.state.schema.text(`$${text}$`))
+      tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(pos + text.length + 2, tr.doc.content.size))))
+    } else {
+      tr.delete(pos, pos + node.nodeSize)
+    }
+    view.dispatch(tr)
+    view.focus()
+  }
+
   const showEditor = editing && ready && innerRef.current !== null
-  return { latex, setEditing, innerRef, showEditor, save, cancel }
+  return { latex, setEditing, innerRef, showEditor, save, cancel, unwrap }
 }
 
 function MathInlineView(props: NodeViewProps) {
-  const { latex, setEditing, innerRef, showEditor, save, cancel } = useMathView(props)
+  const { latex, setEditing, innerRef, showEditor, save, cancel, unwrap } = useMathView(props)
   const html = useMemo(() => renderKatex(latex, false), [latex])
   return (
     <NodeViewWrapper
@@ -165,6 +198,7 @@ function MathInlineView(props: NodeViewProps) {
           block={false}
           onSave={save}
           onCancel={cancel}
+          onUnwrap={unwrap}
         />
       )}
     </NodeViewWrapper>
@@ -246,15 +280,30 @@ export const MathInline = Node.create({
     return [
       // "$E=mc^2$" renders the moment the closing $ is typed.
       new InputRule({
-        find: /(?:^|[^$\w])\$([^$\n]+)\$$/,
+        find: /(?:^|[^$\w\\])\$([^$\n]+)\$$/,
         handler: ({ state, range, match }) => {
-          const latex = match[1].trim()
-          if (!latex) return
+          const latex = match[1]
+          // Pandoc's convention: real math hugs its dollars. A space just
+          // inside either delimiter (or an escaped closing \$) means prose —
+          // "$10m is smaller than $20m" stays text, not an equation.
+          if (/^\s|\s$/.test(latex) || latex.endsWith('\\')) return
           const start = range.from + match[0].indexOf('$')
           state.tr.replaceWith(start, range.to, this.type.create({ latex }))
         },
       }),
     ]
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      // Escape right after "$…$" converts restores the literal text, same
+      // as Backspace (TipTap's built-in undoInputRule on Backspace).
+      Escape: () => {
+        const { selection } = this.editor.state
+        if (!selection.empty || selection.$from.nodeBefore?.type.name !== this.name) return false
+        return this.editor.commands.undoInputRule()
+      },
+    }
   },
 })
 

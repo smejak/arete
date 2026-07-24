@@ -38,6 +38,11 @@ export function CardTextEditor({
     extensions,
     content: initial,
     autofocus: autoFocus ? 'end' : false,
+    // TipTap's autofocus defers to rAF and loses keystrokes typed right after
+    // the editor appears (footnote margin, composer) — claim focus now.
+    onCreate: ({ editor }) => {
+      if (autoFocus) editor.view.focus()
+    },
     onUpdate: ({ editor }) => {
       onChangeRef.current(docToMarkdown(editor.getJSON(), noLinks).trimEnd())
     },

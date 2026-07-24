@@ -21,6 +21,7 @@ import {
   type PageVersion,
 } from '../lib/history'
 import { cx } from '../lib/util'
+import { PageIcon } from '../lib/icon'
 import { localDay } from '../lib/srs'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -126,7 +127,11 @@ export function PageHistoryModal({ pageId, onClose }: { pageId: string; onClose:
                 <>
                   <div className="hist-preview-scroll">
                     <div className="hist-preview-title">
-                      {sel.icon && <span className="hist-preview-icon">{sel.icon}</span>}
+                      {sel.icon && (
+                        <span className="hist-preview-icon">
+                          <PageIcon icon={sel.icon} size={22} strokeWidth={1.6} />
+                        </span>
+                      )}
                       {sel.title || 'Untitled'}
                     </div>
                     <div className="page font-sans hist-preview-doc">

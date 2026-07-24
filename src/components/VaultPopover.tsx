@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { FolderOpen, HardDrive, RefreshCw } from 'lucide-react'
-import { reconnectVault, switchVault, useVault } from '../lib/vault'
+import { FolderOpen, HardDrive, Monitor, RefreshCw, Smartphone } from 'lucide-react'
+import { reconnectVault, switchVault, syncVaultNow, useVault } from '../lib/vault'
 import { fmtRelative } from '../lib/util'
 import { cx } from '../lib/util'
 import { Popover } from './Popover'
@@ -76,10 +76,41 @@ export function VaultButton() {
                 {vault.name}
               </div>
               {vault.path && <div className="vault-path">{prettyPath(vault.path)}</div>}
+              {vault.peers.length > 0 && (
+                <div className="vault-peers">
+                  {vault.peers.map(p => (
+                    <div key={p.device} className="vault-peer">
+                      {p.kind === 'iPhone' ? (
+                        <Smartphone size={12} strokeWidth={1.8} />
+                      ) : (
+                        <Monitor size={12} strokeWidth={1.8} />
+                      )}
+                      {p.kind} · data from {fmtRelative(p.writtenAt)}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="vault-note">
                 Pages as markdown in this folder; cards &amp; history in <code>.arete/</code>.
               </div>
               <div className="vault-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy || vault.state === 'syncing'}
+                  onClick={() =>
+                    run(async () => {
+                      await syncVaultNow()
+                    })
+                  }
+                >
+                  <RefreshCw
+                    size={13}
+                    strokeWidth={1.9}
+                    className={vault.state === 'syncing' ? 'spin' : undefined}
+                  />{' '}
+                  Sync now
+                </button>
                 <button type="button" className="btn" disabled={busy} onClick={doSwitch}>
                   <FolderOpen size={13} strokeWidth={1.9} /> Switch folder…
                 </button>

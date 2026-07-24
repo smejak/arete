@@ -7,6 +7,7 @@ import { childrenOf, descendantsOf, ancestorsOf } from './tree'
 import { markdownToDoc, sanitizeFilename } from './markdown'
 import { applySorts, cellText, evalFilter, isEmptyCell, orderedFields } from './db'
 import { getMedia, withBaseTarget } from './media'
+import { iconText } from './icon'
 
 /**
  * Interactive HTML export: one self-contained file that reads like Arete —
@@ -33,6 +34,9 @@ interface Ctx {
   /** Highlights only render for cards that ship with the export — orphaned
    * or excluded card marks come out as plain text. */
   cardIds: Set<string>
+  /** Footnotes collected while rendering the CURRENT page, in document
+   * order — reset per article; their index is the printed number. */
+  fns: { id: string; md: string }[]
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +55,7 @@ function math(latex: string, display: boolean, ctx: Ctx): string {
 function pageAnchor(ctx: Ctx, pageId: string | null, inline: boolean): string {
   const page = pageId ? ctx.pages[pageId] : undefined
   const title = page ? page.title || 'Untitled' : 'Missing page'
-  const icon = page?.icon ? esc(page.icon) : '📄'
+  const icon = esc(iconText(page?.icon))
   if (page && ctx.exported.has(page.id)) {
     return inline
       ? `<a class="x-mention" data-goto="${page.id}">${icon} <span>${esc(title)}</span></a>`
@@ -67,6 +71,10 @@ function inlineHtml(nodes: JSONContent[] | undefined, ctx: Ctx): string {
     .map(n => {
       if (n.type === 'hardBreak') return '<br>'
       if (n.type === 'mathInline') return math((n.attrs?.latex as string) ?? '', false, ctx)
+      if (n.type === 'footnote') {
+        ctx.fns.push({ id: (n.attrs?.id as string) ?? String(ctx.fns.length), md: (n.attrs?.md as string) ?? '' })
+        return `<sup class="x-fn-ref" data-fn="${escAttr(String(ctx.fns[ctx.fns.length - 1].id))}">${ctx.fns.length}</sup>`
+      }
       if (n.type === 'pageMention') return pageAnchor(ctx, (n.attrs?.pageId as string) ?? null, true)
       if (n.type !== 'text') return ''
       let out = esc(n.text ?? '')
@@ -101,6 +109,11 @@ function inlineHtml(nodes: JSONContent[] | undefined, ctx: Ctx): string {
 function listHtml(node: JSONContent, ctx: Ctx, kind: 'ul' | 'ol' | 'task'): string {
   const items = (node.content ?? [])
     .map(item => {
+      // Lists may nest directly inside lists (indented bullets without a
+      // parent bullet) — render the sublist as its own indented block.
+      if (item.type === 'bulletList' || item.type === 'orderedList' || item.type === 'taskList') {
+        return blockHtml(item, ctx)
+      }
       const inner = (item.content ?? []).map(c => blockHtml(c, ctx)).join('')
       if (kind === 'task') {
         const checked = item.attrs?.checked === true
@@ -206,6 +219,19 @@ function blockHtml(node: JSONContent, ctx: Ctx): string {
       const target = ctx.pages[(node.attrs?.pageId as string) ?? '']
       return target?.db ? dbTableHtml(target, ctx) : ''
     }
+    case 'table': {
+      const rows = node.content ?? []
+      if (!rows.length) return ''
+      const cellTag = (cell: JSONContent) => {
+        const inner = (cell.content ?? []).map(c => blockHtml(c, ctx)).join('')
+        return cell.type === 'tableHeader' ? `<th>${inner}</th>` : `<td>${inner}</td>`
+      }
+      const tr = (row: JSONContent) => `<tr>${(row.content ?? []).map(cellTag).join('')}</tr>`
+      const hasHeader = (rows[0].content ?? []).every(c => c.type === 'tableHeader')
+      const head = hasHeader ? `<thead>${tr(rows[0])}</thead>` : ''
+      const body = (hasHeader ? rows.slice(1) : rows).map(tr).join('')
+      return `<div class="x-table-scroll"><table class="x-table">${head}<tbody>${body}</tbody></table></div>`
+    }
     default:
       return ''
   }
@@ -283,6 +309,7 @@ export async function buildHtmlExport(
     media,
     hasMath: { value: false },
     cardIds: new Set(allCards.map(c => c.id)),
+    fns: [],
   }
   const renderCardSide = (md: string): string => {
     const doc = markdownToDoc(md, () => null)
@@ -303,10 +330,19 @@ export async function buildHtmlExport(
     .map(id => {
       const page = pages[id]
       if (page.db) {
-        return `<article data-page="${id}" hidden><div class="x-head">${page.icon ? `<div class="x-icon">${esc(page.icon)}</div>` : ''}<h1 class="x-title">${esc(page.title || 'Untitled')}</h1></div>${dbTableHtml(page, ctx)}</article>`
+        return `<article data-page="${id}" hidden><div class="x-head">${page.icon ? `<div class="x-icon">${esc(iconText(page.icon))}</div>` : ''}<h1 class="x-title">${esc(page.title || 'Untitled')}</h1></div>${dbTableHtml(page, ctx)}</article>`
       }
+      ctx.fns = [] // footnote numbering restarts on every page
       const body = (page.content?.content ?? []).map(b => blockHtml(b, ctx)).join('')
-      return `<article data-page="${id}" hidden><div class="x-head">${page.icon ? `<div class="x-icon">${esc(page.icon)}</div>` : ''}<h1 class="x-title">${esc(page.title || 'Untitled')}</h1></div><div class="x-body">${body}</div></article>`
+      const fnrail = ctx.fns.length
+        ? `<div class="x-fnrail">${ctx.fns
+            .map(
+              (f, i) =>
+                `<div class="x-fnote" data-fn="${escAttr(f.id)}"><span class="x-fn-n">${i + 1}</span><div class="x-fn-body">${renderCardSide(f.md)}</div></div>`,
+            )
+            .join('')}</div>`
+        : ''
+      return `<article data-page="${id}" hidden><div class="x-head">${page.icon ? `<div class="x-icon">${esc(iconText(page.icon))}</div>` : ''}<h1 class="x-title">${esc(page.title || 'Untitled')}</h1></div><div class="x-body">${body}</div>${fnrail}</article>`
     })
     .join('\n')
 
@@ -428,6 +464,12 @@ summary{cursor:pointer;padding:3.5px 0}
 .x-db th{text-align:left;font-size:13px;font-weight:500;color:var(--text-2);padding:6px 8px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)}
 .x-db td{padding:6px 8px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);vertical-align:top}
 .x-cell-title{font-weight:600}
+.x-table-scroll{overflow-x:auto;margin:8px 0}
+.x-table{border-collapse:collapse;font-size:14.5px;width:100%}
+.x-table th,.x-table td{border:1px solid var(--border);padding:5px 10px;vertical-align:top;text-align:left}
+.x-table th{font-weight:600;background:var(--bg-hover)}
+.x-table p{margin:0}
+.x-table p+p{margin-top:4px}
 .x-chip{display:inline-block;padding:1.5px 8px;border-radius:20px;font-size:12.5px;font-weight:500;background:var(--bg-hover);color:var(--text-2)}
 .xo-green{background:#d9e9e1;color:#2e6b5e}.xo-blue{background:#d9e6ec;color:#2e657c}.xo-red{background:#f2dcd5;color:#a24632}.xo-orange{background:#f6e2d1;color:#96541f}.xo-yellow{background:#f2ebcf;color:#7d651a}.xo-purple{background:#e5dfef;color:#5c4a8a}.xo-pink{background:#f0dde6;color:#94476b}.xo-brown{background:#ebe1d8;color:#6d4f38}.xo-gray{background:#e3e7e5;color:#4b5651}
 @media (prefers-color-scheme:dark){.xo-green{background:rgba(111,186,165,.18);color:#8fcab7}.xo-blue{background:rgba(120,180,205,.18);color:#93c2d6}.xo-red{background:rgba(217,106,77,.2);color:#dd9480}.xo-orange{background:rgba(226,146,92,.2);color:#e0a377}.xo-yellow{background:rgba(212,186,100,.18);color:#d3bd7e}.xo-purple{background:rgba(160,140,220,.19);color:#b6a6dd}.xo-pink{background:rgba(214,130,170,.17);color:#d9a2bd}.xo-brown{background:rgba(190,145,105,.22);color:#d3ab88}.xo-gray{background:rgba(224,240,233,.13);color:#b7c2bd}}
@@ -448,6 +490,14 @@ summary{cursor:pointer;padding:3.5px 0}
 .x-cp-reveal:hover{filter:brightness(1.05)}
 .x-cardsec{margin-top:34px;border-top:1px solid var(--border);padding-top:14px}
 .x-cardsec-title{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}
+.x-fn-ref{display:inline-block;min-width:1.15em;padding:0 .18em;margin:0 1px;text-align:center;font-size:.72em;font-weight:700;line-height:1.4;vertical-align:super;color:var(--accent);background:var(--accent-soft);border-radius:4px;cursor:pointer;user-select:none}
+.x-fnote{position:absolute;width:200px;font-size:14px;line-height:1.5;color:var(--text-2);padding:5px 9px 6px;border-radius:9px;border:1px solid transparent;transition:background .25s ease,border-color .25s ease}
+.x-fnote.is-hidden{display:none}
+.x-fnote.is-hot{background:var(--bg-hover);border-color:var(--border)}
+.x-fn-n{display:block;font-size:10.5px;font-weight:700;color:var(--accent);margin-bottom:1px}
+.x-fn-body p{padding:1.5px 0}
+.x-fn-body>:first-child{margin-top:0}
+.x-fn-body .katex-display{margin:4px 0}
 .x-cardsec .x-cardchip{display:inline-flex;align-items:center;gap:7px;margin:0 6px 6px 0;padding:6px 12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-pop);color:var(--text);font:inherit;font-size:13.5px;cursor:pointer;max-width:100%}
 .x-cardsec .x-cardchip:hover{border-color:var(--accent)}
 .x-cardchip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
@@ -484,7 +534,7 @@ function show(id){
   });
   closeCard();
   buildCardSection(id);
-  requestAnimationFrame(function(){layoutChips(id)});
+  requestAnimationFrame(function(){layoutChips(id);layoutNotes(id)});
   window.scrollTo(0,0);
   if(history.replaceState)history.replaceState(null,'',id===ROOT?location.pathname+location.search:'#'+id);
 }
@@ -517,16 +567,56 @@ function layoutChips(id){
     if(!b)return;
     var top=b.getBoundingClientRect().top+window.scrollY;
     var key=Math.round(top/28);
+    // Chips stack DOWN, not right — the footnote lane lives beside them.
     var shift=(seen[key]||0);seen[key]=shift+1;
     var btn=document.createElement('button');
     btn.className='x-cardbtn';btn.title='Review card';btn.textContent='✦';
-    btn.style.top=(top+2)+'px';
-    btn.style.left=(a.getBoundingClientRect().right+window.scrollX+14+shift*32)+'px';
+    btn.style.top=(top+2+shift*30)+'px';
+    btn.style.left=(a.getBoundingClientRect().right+window.scrollX+14)+'px';
     btn.onclick=function(ev){ev.stopPropagation();openPanel(card,top)};
     btn.onmouseenter=function(){setLive(card,true)};
     btn.onmouseleave=function(){setLive(card,false)};
     rail.appendChild(btn);
   });
+}
+
+function fnMarginRoom(a){
+  return document.documentElement.clientWidth-a.getBoundingClientRect().right;
+}
+
+// Footnotes sit in their own lane right of the card chips, anchored to the
+// block their number lives in and pushed apart when blocks crowd. With no
+// margin room they hide; clicking a number then opens them as a panel.
+function layoutNotes(id){
+  var a=article();if(!a)return;
+  var notes=a.querySelectorAll('.x-fnote');
+  if(!notes.length)return;
+  var narrow=fnMarginRoom(a)<250;
+  var bottom=-1e9;
+  notes.forEach(function(note){
+    if(narrow){note.classList.add('is-hidden');return}
+    note.classList.remove('is-hidden');
+    var ref=a.querySelector('.x-fn-ref[data-fn="'+note.getAttribute('data-fn')+'"]');
+    if(!ref){note.classList.add('is-hidden');return}
+    var top=blockOf(ref).getBoundingClientRect().top+window.scrollY;
+    if(top<bottom+10)top=bottom+10;
+    note.style.top=top+'px';
+    note.style.left=(a.getBoundingClientRect().right+window.scrollX+52)+'px';
+    bottom=top+note.offsetHeight;
+  });
+}
+
+function openFnPanel(note,anchor){
+  closeCard();
+  panel.hidden=false;panel.innerHTML='';
+  var d=document.createElement('div');
+  d.innerHTML='<div class="x-cp-head"><span>Footnote '+esc(note.querySelector('.x-fn-n').textContent)+'</span><span class="x-cp-btns"><button data-act="close" title="Close">✕</button></span></div>'+
+    '<div class="x-fn-body">'+note.querySelector('.x-fn-body').innerHTML+'</div>';
+  d.querySelector('[data-act="close"]').onclick=function(){closeCard()};
+  panel.appendChild(d);
+  var r=anchor.getBoundingClientRect();
+  panel.style.top=(r.bottom+window.scrollY+8)+'px';
+  panel.style.left=Math.max(12,Math.min(r.left+window.scrollX,document.documentElement.clientWidth-372))+'px';
 }
 
 function cardBody(card,expanded){
@@ -609,7 +699,19 @@ document.addEventListener('keydown',function(e){
     else document.querySelectorAll('.x-embed.is-full').forEach(function(em){em.classList.remove('is-full');em.querySelector('.x-embed-expand').textContent='⤢'});
   }
 });
-window.addEventListener('resize',function(){if(current)layoutChips(current)});
+window.addEventListener('resize',function(){if(current){layoutChips(current);layoutNotes(current)}});
+
+document.addEventListener('click',function(e){
+  var ref=e.target.closest('.x-fn-ref');
+  if(!ref)return;
+  var a=article();if(!a)return;
+  var note=a.querySelector('.x-fnote[data-fn="'+ref.getAttribute('data-fn')+'"]');
+  if(!note)return;
+  if(fnMarginRoom(a)<250){openFnPanel(note,ref);return}
+  note.classList.remove('is-hot');
+  void note.offsetWidth;
+  note.classList.add('is-hot');
+});
 
 var initial=(location.hash||'').slice(1);
 show(TITLES[initial]!==undefined?initial:ROOT);

@@ -10,7 +10,6 @@ import {
   Copy,
   ExternalLink,
   FilePlus2,
-  FileText,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -21,6 +20,7 @@ import {
 import { useStore } from '../store/store'
 import { childrenOf, descendantsOf, inSubtree } from '../lib/tree'
 import { cx } from '../lib/util'
+import { PageIcon } from '../lib/icon'
 import type { Anchor } from '../lib/position'
 import { Menu, Popover } from './Popover'
 
@@ -216,7 +216,7 @@ function TreeItem({
       >
         <span className="row-slot">
           <span className="row-icon">
-            {page.icon ?? <FileText size={15} strokeWidth={1.7} />}
+            <PageIcon icon={page.icon} size={15} strokeWidth={1.7} />
           </span>
           <button
             type="button"

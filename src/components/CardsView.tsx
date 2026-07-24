@@ -18,6 +18,7 @@ import { useSrsStore } from '../store/srs-store'
 import { useClock } from '../store/clock'
 import { dueAt, fmtInterval, retrievability, scheduleLabel } from '../lib/srs'
 import { refText } from '../lib/refs'
+import { iconText } from '../lib/icon'
 import {
   historyVersion,
   readCardHistory,
@@ -176,7 +177,7 @@ export function CardsView() {
                   <span className="card-row-deck">
                     {card.pageId
                       ? deckPage
-                        ? `${deckPage.icon ?? '📄'} ${deckPage.title || 'Untitled'}`
+                        ? `${iconText(deckPage.icon)} ${deckPage.title || 'Untitled'}`
                         : 'Deleted page'
                       : 'Unfiled'}
                   </span>
@@ -216,10 +217,12 @@ function NewCardModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="modal-body">
-          <CardForm draft={draft} onChange={setDraft} autoFocus />
+          <CardForm draft={draft} onChange={setDraft} autoFocus withDeck />
         </div>
         <div className="modal-foot">
-          <span className="composer-hint">Unfiled — not tied to any text</span>
+          <span className="composer-hint">
+            {draft.pageId ? 'Filed under its page — shows in that deck' : 'Unfiled — not tied to any text'}
+          </span>
           <div className="composer-actions">
             <button type="button" className="btn" onClick={onClose}>
               Cancel
@@ -233,7 +236,7 @@ function NewCardModal({ onClose }: { onClose: () => void }) {
                   front: draft.front.trim(),
                   back: draft.back.trim(),
                   tags: parseTags(draft.tagsText),
-                  pageId: null,
+                  pageId: draft.pageId,
                   refs: [],
                   type: draft.type,
                   routine: draft.type === 'routine' ? draft.routine : undefined,
@@ -281,6 +284,9 @@ function CardEditModal({ id, onClose }: { id: string; onClose: () => void }) {
       front: draft.front.trim(),
       back: draft.back.trim(),
       tags: parseTags(draft.tagsText),
+      // Re-filing is safe for highlight-born cards: their ref chips carry
+      // their own page ids, so ref navigation survives a deck change.
+      pageId: draft.pageId,
       type: draft.type,
       routine: draft.type === 'routine' ? draft.routine : undefined,
       temp: draft.type === 'temp' ? draft.temp : undefined,
@@ -324,7 +330,7 @@ function CardEditModal({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
           )}
 
-          <CardForm draft={draft} onChange={setDraft} />
+          <CardForm draft={draft} onChange={setDraft} withDeck />
 
           <div className="card-stats">
             <span title="Estimated recall right now">
@@ -359,7 +365,7 @@ function CardEditModal({ id, onClose }: { id: string; onClose: () => void }) {
                     <div className="refs-src">
                       {!live && <span className="refs-stale">as highlighted — text has changed</span>}
                       <span className="refs-page">
-                        {refPage ? `${refPage.icon ?? '📄'} ${refPage.title || 'Untitled'}` : 'Deleted page'}
+                        {refPage ? `${iconText(refPage.icon)} ${refPage.title || 'Untitled'}` : 'Deleted page'}
                       </span>
                       {refPage && (
                         <button

@@ -87,7 +87,17 @@ export const Toggle = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(ToggleView)
+    return ReactNodeViewRenderer(ToggleView, {
+      // The default stopEvent eats drag/drop over the wrapper, so dropping
+      // blocks on (or into) a toggle silently failed. Let ProseMirror see all
+      // dnd; body content flows through as before and only chrome events
+      // (the chevron) stay stopped.
+      stopEvent: ({ event }) => {
+        if (event.type.startsWith('drag') || event.type === 'drop') return false
+        const el = event.target as HTMLElement | null
+        return !!el && !el.closest?.('.toggle-body')
+      },
+    })
   },
 
   addInputRules() {
@@ -170,18 +180,27 @@ export const Toggle = Node.create({
             }
             return true
           }
-          // Enter on a collapsed summary chains a fresh collapsed toggle
-          // below, like list items continue. (Open toggles split into a
-          // first child instead.)
+          // Enter on a collapsed summary continues the list like a bullet
+          // does. At the END of the line, chain a fresh collapsed toggle
+          // below (this toggle keeps its hidden body). Anywhere earlier,
+          // split the summary: the text after the caret and the hidden body
+          // drop into a new collapsed toggle below, leaving the before-caret
+          // text — empty, when the caret was at the start — in the toggle
+          // above. (Open toggles split into a first child instead.)
           if (inSummary($from, d) && !toggle.attrs.open) {
+            const atEnd = $from.parentOffset === $from.parent.content.size
             if (dispatch) {
-              const after = $from.after(d)
-              const next = this.type.create(
-                { open: false },
-                state.schema.nodes.paragraph.create(),
-              )
-              tr.insert(after, next)
-              tr.setSelection(TextSelection.create(tr.doc, after + 2))
+              if (atEnd) {
+                const after = $from.after(d)
+                const next = this.type.create(
+                  { open: false },
+                  state.schema.nodes.paragraph.create(),
+                )
+                tr.insert(after, next)
+                tr.setSelection(TextSelection.create(tr.doc, after + 2))
+              } else {
+                tr.split($from.pos, 2, [{ type: this.type, attrs: { open: false } }])
+              }
               tr.scrollIntoView()
             }
             return true

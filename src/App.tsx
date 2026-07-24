@@ -36,6 +36,11 @@ export default function App() {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
+  const fontScale = useStore(s => s.fontScale)
+  useEffect(() => {
+    document.documentElement.style.setProperty('--text-scale', String(fontScale || 1))
+  }, [fontScale])
+
   // Self-heal: always have a page to show, and at least one tab.
   useEffect(() => {
     if (!page) {
@@ -94,6 +99,27 @@ export default function App() {
       }
     }, 300_000)
     return () => window.clearInterval(t)
+  }, [])
+
+  // Pull the vault on window focus and on a slow poll, so activity another
+  // device wrote to it (the optional iPhone app is one such writer, but this
+  // covers any external change) surfaces here without a local edit. Both funnel
+  // through the same guarded, debounced sync: it no-ops when no vault folder is
+  // open and writes nothing when nothing changed — so a desktop-only setup is
+  // completely unaffected.
+  useEffect(() => {
+    const pull = () => void import('./lib/vault').then(v => v.scheduleVaultSync())
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') pull()
+    }
+    window.addEventListener('focus', pull)
+    document.addEventListener('visibilitychange', onVisible)
+    const t = window.setInterval(pull, 60_000)
+    return () => {
+      window.removeEventListener('focus', pull)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.clearInterval(t)
+    }
   }, [])
 
   return (

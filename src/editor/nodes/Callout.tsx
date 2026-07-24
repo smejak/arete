@@ -5,7 +5,6 @@ import {
   ReactNodeViewRenderer,
   type NodeViewProps,
 } from '@tiptap/react'
-import { TextSelection } from '@tiptap/pm/state'
 import { useState } from 'react'
 import { EmojiPicker } from '../../components/EmojiPicker'
 import { cx } from '../../lib/util'
@@ -75,38 +74,31 @@ export const Callout = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(CalloutView)
+    return ReactNodeViewRenderer(CalloutView, {
+      // Same drag/drop passthrough as Toggle/PageLink: without it, drops on
+      // the callout's chrome do nothing. Only the emoji button stays stopped.
+      stopEvent: ({ event }) => {
+        if (event.type.startsWith('drag') || event.type === 'drop') return false
+        const el = event.target as HTMLElement | null
+        return !!el && !el.closest?.('.callout-body')
+      },
+    })
   },
 
   addKeyboardShortcuts() {
     return {
-      // Enter on a trailing empty line steps out of the callout instead of
-      // growing it forever.
-      Enter: () =>
-        this.editor.commands.command(({ state, tr, dispatch }) => {
-          const { $from, empty } = state.selection
-          if (!empty) return false
-          for (let depth = $from.depth; depth > 0; depth--) {
-            if ($from.node(depth).type.name !== this.name) continue
-            const callout = $from.node(depth)
-            const para = $from.parent
-            if (para.type.name !== 'paragraph' || para.content.size > 0) return false
-            // Only a paragraph sitting directly in the callout escapes.
-            if ($from.depth !== depth + 1) return false
-            const isLastChild = $from.index(depth) === callout.childCount - 1
-            if (!isLastChild || callout.childCount < 2) return false
-            if (dispatch) {
-              const afterCallout = $from.after(depth)
-              tr.delete($from.before($from.depth), $from.after($from.depth))
-              const insertAt = tr.mapping.map(afterCallout)
-              tr.insert(insertAt, state.schema.nodes.paragraph.create())
-              tr.setSelection(TextSelection.create(tr.doc, insertAt + 1))
-              tr.scrollIntoView()
-            }
-            return true
-          }
-          return false
-        }),
+      // Enter inside a callout only ever makes another line. Without this,
+      // PM's base-keymap liftEmptyBlock claims empty paragraphs: mid-callout
+      // it SPLITS the callout in two, on the last line it lifts the paragraph
+      // out. You leave a callout by clicking below it, not by pressing return.
+      Enter: () => {
+        const { $from, empty } = this.editor.state.selection
+        if (!empty) return false
+        const para = $from.parent
+        if (para.type.name !== 'paragraph' || para.content.size > 0) return false
+        if ($from.node(-1).type.name !== this.name) return false
+        return this.editor.commands.splitBlock()
+      },
     }
   },
 })

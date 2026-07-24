@@ -11,6 +11,7 @@ import { PageView } from './PageView'
  */
 export function PagePeek() {
   const peekId = useStore(s => s.peekPageId)
+  const restoreNonce = useStore(s => s.restoreNonce)
   const page = useStore(s => (s.peekPageId ? s.pages[s.peekPageId] : undefined))
   const setPeek = useStore(s => s.setPeek)
   const openPage = useStore(s => s.openPage)
@@ -53,7 +54,9 @@ export function PagePeek() {
           </button>
         </div>
         <div className="peek-body">
-          <PageView key={'peek:' + peekId} pageId={peekId} />
+          {/* restoreNonce in the key: external edits (vault refresh) and
+              version restores must remount the peeked editor too. */}
+          <PageView key={'peek:' + peekId + ':' + restoreNonce} pageId={peekId} />
         </div>
       </aside>
     </div>,

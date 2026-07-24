@@ -18,6 +18,7 @@ import {
   ListCollapse,
   ListOrdered,
   ListTodo,
+  Plus,
   Smile,
   Sparkles,
   SquareCode,
@@ -35,6 +36,7 @@ import { blockSelectKey } from '../editor/BlockSelect'
 import { COVERS, randomCover } from '../lib/covers'
 import { randomEmoji } from '../lib/emoji'
 import { cx } from '../lib/util'
+import { PageIcon } from '../lib/icon'
 import { recordPageVersion } from '../lib/history'
 import { applyCardRefMark, flashCardRefs, removeCardRefMarks } from '../lib/refs'
 import { EmojiPicker } from './EmojiPicker'
@@ -44,11 +46,17 @@ import { MentionMenu } from './MentionMenu'
 import { Menu, Popover } from './Popover'
 import { CardComposer, parseTags, type CardDraft } from './CardComposer'
 import { LinkMenu } from './LinkMenu'
+import { FootnoteMargin } from './FootnoteMargin'
 import { RowPageProps } from './db/RowPageProps'
 import type { SlashItem } from '../editor/SlashCommand'
 import type { MentionEntry } from '../editor/MentionCommand'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+/** Scroll offset per page, kept at module scope so it outlives PageView's
+ * unmount — switching tabs remounts PageView (App keys it by page id), which
+ * would otherwise drop the reader back to the top on return. */
+const scrollMemory = new Map<string, number>()
 
 /** Subpage/database blocks owned by this doc (created via /page, /table). */
 function scanOwnedPages(doc: PMNode): Set<string> {
@@ -170,6 +178,29 @@ export function PageView({ pageId }: { pageId: string }) {
     // the rollback.
     content: jsonRef.current ?? page?.content ?? EMPTY_DOC,
     autofocus: false,
+    onCreate: ({ editor }) => {
+      // Dev handle for driving the live editor from the console/tests.
+      if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).areteEditor = editor
+      // When the doc STARTS with an atom block (subpage link, image, table…),
+      // ProseMirror's default start-of-doc selection is a NodeSelection on it
+      // — which paints the block selected before any interaction. Park the
+      // caret in the first text block instead (the trailing-paragraph
+      // extension guarantees one exists). The editor stays unfocused.
+      const { state, view } = editor
+      if (!(state.selection instanceof NodeSelection)) return
+      let pos: number | null = null
+      state.doc.descendants((node, p) => {
+        if (pos !== null) return false
+        if (node.isTextblock) {
+          pos = p + 1
+          return false
+        }
+        return true
+      })
+      if (pos !== null) {
+        view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)))
+      }
+    },
     onUpdate: ({ editor }) => {
       jsonRef.current = editor.getJSON()
       dirtyRef.current = true
@@ -214,6 +245,21 @@ export function PageView({ pageId }: { pageId: string }) {
   useEffect(() => {
     if (editor) ownedRef.current = scanOwnedPages(editor.state.doc)
   }, [editor])
+
+  // Restore the scroll offset this page was left at (see scrollMemory). Runs
+  // once the editor's content is in the DOM; re-applied next frame because
+  // async-height content (images, KaTeX, cover) can grow layout after the
+  // first paint and clamp an early scrollTop.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!editor || !el) return
+    const saved = scrollMemory.get(pageId) ?? 0
+    el.scrollTop = saved
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = saved
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [editor, pageId])
 
   // Clicking the six-dot handle highlights its block while the menu is open
   // (atoms use their own node-selection wash instead of the tint).
@@ -545,6 +591,25 @@ export function PageView({ pageId }: { pageId: string }) {
     setBlockMenu(null)
   }
 
+  const addBlockBelow = () => {
+    if (!editor || !blockMenu) return
+    const { state } = editor
+    const node = state.doc.nodeAt(blockMenu.pos)
+    if (!node) return
+    const at = blockMenu.pos + node.nodeSize
+    const $at = state.doc.resolve(at)
+    const paraType = state.schema.nodes.paragraph
+    // Prefer an empty paragraph; where the parent can't hold one directly
+    // (a list, whose children must be items) match the current block's type.
+    const fits = $at.parent.canReplaceWith($at.index(), $at.index(), paraType)
+    const block = (fits ? paraType.createAndFill() : node.type.createAndFill()) ?? paraType.create()
+    const tr = state.tr.insert(at, block)
+    tr.setSelection(Selection.near(tr.doc.resolve(at + 1))).scrollIntoView()
+    editor.view.dispatch(tr)
+    editor.view.focus()
+    setBlockMenu(null)
+  }
+
   const deleteBlock = () => {
     if (!editor || !blockMenu) return
     const node = editor.state.doc.nodeAt(blockMenu.pos)
@@ -624,6 +689,7 @@ export function PageView({ pageId }: { pageId: string }) {
       className={cx('page-scroll', capturing && 'is-capturing')}
       ref={scrollRef}
       onMouseDown={onBandMouseDown}
+      onScroll={e => scrollMemory.set(pageId, e.currentTarget.scrollTop)}
     >
       {band && (
         <div
@@ -657,7 +723,7 @@ export function PageView({ pageId }: { pageId: string }) {
               title="Change icon"
               onClick={e => setIconPicker(e.currentTarget.getBoundingClientRect())}
             >
-              {page.icon}
+              <PageIcon icon={page.icon} size={52} strokeWidth={1.5} />
             </button>
           )}
           <div className="page-controls">
@@ -703,6 +769,7 @@ export function PageView({ pageId }: { pageId: string }) {
           <EditorContent editor={editor} />
         </div>
         <div className="editor-tail" onMouseDown={onTailDown} />
+        {editor && <FootnoteMargin editor={editor} />}
       </div>
 
       {slashView && <SlashMenu view={slashView} />}
@@ -744,6 +811,7 @@ export function PageView({ pageId }: { pageId: string }) {
                     },
                   ]
                 : []),
+              { icon: Plus, label: 'Add block below', onSelect: addBlockBelow },
               {
                 icon: Sparkles,
                 label: 'New card from block',
@@ -812,6 +880,7 @@ export function PageView({ pageId }: { pageId: string }) {
         <EmojiPicker
           anchor={iconPicker}
           allowRemove
+          allowIcons
           onClose={() => setIconPicker(null)}
           onPick={emoji => {
             setIcon(page.id, emoji)

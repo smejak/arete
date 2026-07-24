@@ -38,7 +38,7 @@ interface SrsState {
   createCard: (input: CreateCardInput) => string
   updateCard: (
     id: string,
-    patch: Partial<Pick<SrsCard, 'front' | 'back' | 'tags' | 'type' | 'routine' | 'temp'>>,
+    patch: Partial<Pick<SrsCard, 'front' | 'back' | 'tags' | 'pageId' | 'type' | 'routine' | 'temp'>>,
   ) => void
   toggleArchive: (id: string) => void
   deleteCard: (id: string) => void
@@ -70,9 +70,9 @@ export const useSrsStore = create<SrsState>()(
           id,
           front: input.front,
           back: input.back,
-          tags: input.tags,
+          tags: input.tags ?? [],
           pageId: input.pageId,
-          refs: input.refs,
+          refs: input.refs ?? [],
           type: input.type,
           routine: input.routine,
           temp: input.temp,
@@ -146,9 +146,13 @@ export const useSrsStore = create<SrsState>()(
           lastCorrectAt: result.lastCorrectAt,
           archived: result.archived,
           archivedAt: result.archivedAt,
-          // Reviews count as updates so cross-device merge can pick the
-          // freshest copy of a card by timestamp alone.
-          updatedAt: now.getTime(),
+          // A review deliberately does NOT bump `updatedAt`: that field is the
+          // content-edit time, and the merge treats it as authoritative against
+          // deletion tombstones. If a review bumped it, reviewing a card that
+          // was deleted on another device (before this device synced the
+          // deletion) would out-rank the tombstone and resurrect the card.
+          // Review recency still travels cross-device via fsrs.last_review,
+          // which cardFreshness() folds in when choosing the freshest copy.
         }
         const entry: ReviewLogEntry = {
           id: crypto.randomUUID(),

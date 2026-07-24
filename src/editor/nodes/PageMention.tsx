@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
-import { FileText } from 'lucide-react'
+import { PageIcon } from '../../lib/icon'
 import { useStore } from '../../store/store'
 import { cx } from '../../lib/util'
 
@@ -20,7 +20,7 @@ function PageMentionView({ node, selected }: NodeViewProps) {
       onClick={() => page && openPage(pageId)}
     >
       <span className="pm-icon">
-        {page?.icon ?? <FileText size={13} strokeWidth={1.8} />}
+        <PageIcon icon={page?.icon} size={13} strokeWidth={1.8} />
       </span>
       <span className="pm-title">{page ? page.title || 'Untitled' : 'Deleted page'}</span>
     </NodeViewWrapper>

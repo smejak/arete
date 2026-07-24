@@ -474,6 +474,81 @@
   outline: none;
 }
 
+/* Deck (page) picker — pages act as decks, like the iPhone composer. */
+.cf-deck {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.cf-deck:hover {
+  border-color: var(--accent);
+}
+
+.cf-deck-cur {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-deck-icon {
+  display: inline-flex;
+  width: 15px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.deck-pop {
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.deck-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-2);
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.deck-row:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.deck-row.is-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.deck-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cf-types {
   display: flex;
   gap: 5px;
@@ -642,8 +717,16 @@
 
 .review-meta {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 10px;
   margin: 40px 0 14px;
+}
+
+.review-deck-filter {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .review-count {
@@ -1700,11 +1783,36 @@
   padding: 0 4px;
 }
 
+.vault-peers {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 12px 6px;
+}
+
+.vault-peer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
 .vault-actions {
   display: flex;
   gap: 6px;
   padding: 0 12px;
   flex-wrap: wrap;
+}
+
+@keyframes arete-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: arete-spin 0.9s linear infinite;
 }
 
 .vault-actions .btn {

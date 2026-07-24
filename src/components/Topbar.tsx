@@ -5,8 +5,10 @@ import {
   GraduationCap,
   History,
   Layers,
+  Minus,
   Moon,
   MoreHorizontal,
+  Plus,
   Share,
   Star,
   StarOff,
@@ -17,6 +19,7 @@ import { useStore } from '../store/store'
 import type { FontKey, Page } from '../store/types'
 import { ancestorsOf, descendantsOf, wordCount } from '../lib/tree'
 import { cx, fmtRelative } from '../lib/util'
+import { PageIcon, iconText } from '../lib/icon'
 import { Menu, Popover } from './Popover'
 import { PageHistoryModal } from './PageHistoryModal'
 import { ShareModal } from './ShareModal'
@@ -40,6 +43,8 @@ export function Topbar({ page }: { page: Page | null }) {
   const openPage = useStore(s => s.openPage)
   const favorites = useStore(s => s.favorites)
   const setFont = useStore(s => s.setFont)
+  const fontScale = useStore(s => s.fontScale)
+  const setFontScale = useStore(s => s.setFontScale)
   const toggleFavorite = useStore(s => s.toggleFavorite)
   const duplicatePage = useStore(s => s.duplicatePage)
   const deletePage = useStore(s => s.deletePage)
@@ -97,7 +102,11 @@ export function Topbar({ page }: { page: Page | null }) {
                 className={cx('crumb', p.id === page?.id && 'is-current')}
                 onClick={() => openPage(p.id)}
               >
-                {p.icon && <span className="crumb-icon">{p.icon}</span>}
+                {p.icon && (
+                  <span className="crumb-icon">
+                    <PageIcon icon={p.icon} size={14} strokeWidth={1.8} />
+                  </span>
+                )}
                 <span className="crumb-title">{p.title || 'Untitled'}</span>
               </button>
             </Fragment>
@@ -139,7 +148,7 @@ export function Topbar({ page }: { page: Page | null }) {
         <Popover anchor={overflowAt} onClose={() => setOverflowAt(null)}>
           <Menu
             entries={hidden.map(h => ({
-              label: (h.icon ? h.icon + '  ' : '') + (h.title || 'Untitled'),
+              label: (h.icon ? iconText(h.icon) + '  ' : '') + (h.title || 'Untitled'),
               onSelect: () => {
                 setOverflowAt(null)
                 openPage(h.id)
@@ -191,6 +200,37 @@ export function Topbar({ page }: { page: Page | null }) {
                     <span className="font-name">{f.label}</span>
                   </button>
                 ))}
+              </div>
+              <div className="textsize-row">
+                <span className="menu-note">Text size</span>
+                <span className="textsize-ctl">
+                  <button
+                    type="button"
+                    className="ts-btn"
+                    aria-label="Smaller text"
+                    disabled={fontScale <= 0.8}
+                    onClick={() => setFontScale(fontScale - 0.05)}
+                  >
+                    <Minus size={13} strokeWidth={2.2} />
+                  </button>
+                  <button
+                    type="button"
+                    className="ts-val"
+                    title="Reset to 100%"
+                    onClick={() => setFontScale(1)}
+                  >
+                    {Math.round((fontScale || 1) * 100)}%
+                  </button>
+                  <button
+                    type="button"
+                    className="ts-btn"
+                    aria-label="Larger text"
+                    disabled={fontScale >= 1.4}
+                    onClick={() => setFontScale(fontScale + 0.05)}
+                  >
+                    <Plus size={13} strokeWidth={2.2} />
+                  </button>
+                </span>
               </div>
               <div className="menu-sep" />
               <Menu

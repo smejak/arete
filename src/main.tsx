@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useStore } from './store/store'
 
 import '@fontsource/schibsted-grotesk/400.css'
@@ -31,6 +32,16 @@ if (import.meta.env.DEV) {
   import('./store/srs-store').then(m => {
     ;(window as unknown as { areteSrs: typeof m.useSrsStore }).areteSrs = m.useSrsStore
   })
+  // The vault singletons too — bare dynamic imports from the console get a
+  // second module instance once Vite has invalidated the graph, so this is
+  // the only reliable way to drive the REAL vault from tests.
+  import('./lib/vault').then(m => {
+    ;(window as unknown as { areteVault: typeof m }).areteVault = m
+  })
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+createRoot(document.getElementById('root')!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+)

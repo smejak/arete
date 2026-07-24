@@ -1,8 +1,14 @@
 import StarterKit from '@tiptap/starter-kit'
 import Blockquote from '@tiptap/extension-blockquote'
+import BulletList from '@tiptap/extension-bullet-list'
+import OrderedList from '@tiptap/extension-ordered-list'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableHeader from '@tiptap/extension-table-header'
+import TableCell from '@tiptap/extension-table-cell'
 import Link from '@tiptap/extension-link'
 import Highlight from '@tiptap/extension-highlight'
 import Underline from '@tiptap/extension-underline'
@@ -11,6 +17,7 @@ import { Extension, wrappingInputRule, type Extensions } from '@tiptap/core'
 import { Selection } from '@tiptap/pm/state'
 import type { SuggestionOptions } from '@tiptap/suggestion'
 import { Callout } from './nodes/Callout'
+import { Footnote } from './nodes/Footnote'
 import { Toggle } from './nodes/Toggle'
 import { DatabaseBlock } from './nodes/DatabaseBlock'
 import { HtmlBlock, ImageBlock, MediaPaste } from './nodes/Media'
@@ -22,6 +29,20 @@ import { CardRefMark } from './marks/CardRef'
 import { TrailingNode } from './TrailingNode'
 import { CARD_SLASH_EXCLUDE, filterSlashItems, SlashCommand, type SlashItem } from './SlashCommand'
 import { MentionCommand, type MentionEntry } from './MentionCommand'
+import { ListIndent } from './ListIndent'
+
+/** Lists may nest DIRECTLY inside lists (no parent bullet required), so any
+ * bullet can be Tab-indented — including the first one — and an indented
+ * run survives without a bullet above it. ListIndent supplies the keys. */
+const NestingBulletList = BulletList.extend({
+  content: '(listItem | bulletList | orderedList | taskList)+',
+})
+const NestingOrderedList = OrderedList.extend({
+  content: '(listItem | bulletList | orderedList | taskList)+',
+})
+const NestingTaskList = TaskList.extend({
+  content: '(taskItem | bulletList | orderedList | taskList)+',
+})
 
 /** `>` belongs to toggles now (like Notion), so quotes wrap on `"` instead —
  * matching both the straight quote and the curly one Typography makes of it. */
@@ -31,10 +52,12 @@ const QuoteBlock = Blockquote.extend({
   },
 })
 
-/** Backspace on an empty paragraph that sits right after a list removes the
- * paragraph and lands at the end of the list — instead of ProseMirror's
- * default join, which re-wraps the line into a bullet you then have to
- * delete a second time. */
+/** Backspace on an empty paragraph that sits right after any structured
+ * block (list, toggle, callout, image, …) removes the paragraph and lands at
+ * the end of that block — instead of ProseMirror's defaults, which re-wrap
+ * the line into a bullet after lists, or silently node-select the block so
+ * the SECOND press deletes it (Jakub hit this with collapsed toggles).
+ * Plain textblocks (paragraphs, headings, code) keep the native join. */
 const ListEscape = Extension.create({
   name: 'listEscape',
   addKeyboardShortcuts() {
@@ -48,7 +71,7 @@ const ListEscape = Extension.create({
           const idx = $from.index(0)
           if (idx === 0) return false
           const prev = state.doc.child(idx - 1)
-          if (!['bulletList', 'orderedList', 'taskList'].includes(prev.type.name)) return false
+          if (prev.isTextblock) return false
           if (dispatch) {
             const pos = $from.before(1)
             tr.delete(pos, pos + para.nodeSize)
@@ -56,6 +79,50 @@ const ListEscape = Extension.create({
           }
           return true
         }),
+    }
+  },
+})
+
+const ITEM_TYPES = ['listItem', 'taskItem']
+
+/** Enter at the very start of the LAST item of a top-level list, when nothing
+ * but empty trailing paragraphs sit beneath it, lifts that item out into a
+ * plain paragraph instead of splitting — so the closing line of a list can be
+ * turned back into ordinary text (otherwise there's no clean way to). The
+ * default split (a fresh empty bullet above) still runs everywhere else,
+ * including the SAME caret position on a middle item, which must keep splitting.
+ * Priority beats StarterKit's `Enter: splitListItem`; returning false elsewhere
+ * falls straight back to it. */
+const ListExitOnEnter = Extension.create({
+  name: 'listExitOnEnter',
+  priority: 1000,
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const { state } = this.editor
+        const { $from, empty } = state.selection
+        if (!empty || $from.parentOffset !== 0) return false
+        // Nearest enclosing list item; require it be TOP-LEVEL, i.e.
+        // doc > list > item > paragraph, so the item sits at depth 2.
+        let d = 0
+        for (let i = $from.depth; i > 0; i--) {
+          if (ITEM_TYPES.includes($from.node(i).type.name)) {
+            d = i
+            break
+          }
+        }
+        if (d !== 2 || $from.depth !== d + 1 || $from.index(d) !== 0) return false
+        // Only the list's LAST item delists — a middle item still splits.
+        const list = $from.node(d - 1)
+        if ($from.index(d - 1) !== list.childCount - 1) return false
+        // Nothing but empty paragraphs (e.g. the trailing node) may follow the
+        // list; real content beneath means a normal split is wanted instead.
+        for (let i = $from.index(0) + 1; i < state.doc.childCount; i++) {
+          const after = state.doc.child(i)
+          if (after.type.name !== 'paragraph' || after.content.size > 0) return false
+        }
+        return this.editor.commands.liftListItem($from.node(d).type.name)
+      },
     }
   },
 })
@@ -71,8 +138,12 @@ export function buildCardExtensions(
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       blockquote: false,
+      bulletList: false,
+      orderedList: false,
       dropcursor: { color: 'var(--accent)', width: 2 },
     }),
+    NestingBulletList,
+    NestingOrderedList,
     QuoteBlock,
     Placeholder.configure({
       includeChildren: true,
@@ -82,10 +153,14 @@ export function buildCardExtensions(
         const $pos = editor.state.doc.resolve(pos)
         const parentName = $pos.parent.type.name
         if (parentName !== 'doc') return ''
+        // Only the first top-level line carries the field's prompt. Empty lines
+        // below it stay blank, so the (long) placeholder can't reappear while
+        // you're mid-write and overflow the box.
+        if (pos !== 0) return ''
         return placeholder
       },
     }),
-    TaskList,
+    NestingTaskList,
     TaskItem.configure({ nested: true }),
     Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
     Highlight,
@@ -93,12 +168,23 @@ export function buildCardExtensions(
     Typography.configure({ emDash: false }),
     Callout,
     Toggle,
+    // Simple (markdown) tables — not resizable: colwidths have no home in the
+    // GFM round-trip, so any dragged width would silently vanish on reload.
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     ImageBlock,
     HtmlBlock,
     MediaPaste,
     MathInline,
     MathBlock,
+    // Schema-complete so `^[…]` in card markdown parses (rendered as an
+    // inert numbered sup — the margin presentation belongs to pages).
+    Footnote,
     ListEscape,
+    ListExitOnEnter,
+    ListIndent,
     ...(opts.slash
       ? [SlashCommand.configure({ suggestion: { items: ({ query }) => filterSlashItems(query, CARD_SLASH_EXCLUDE), ...opts.slash } })]
       : []),
@@ -117,8 +203,12 @@ export function buildExtensions(
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       blockquote: false,
+      bulletList: false,
+      orderedList: false,
       dropcursor: { color: 'var(--accent)', width: 2.5 },
     }),
+    NestingBulletList,
+    NestingOrderedList,
     QuoteBlock,
     Placeholder.configure({
       includeChildren: true,
@@ -138,7 +228,7 @@ export function buildExtensions(
         return 'Write, or press "/" for blocks…'
       },
     }),
-    TaskList,
+    NestingTaskList,
     TaskItem.configure({ nested: true }),
     Link.configure({
       openOnClick: false,
@@ -153,6 +243,10 @@ export function buildExtensions(
     Typography.configure({ emDash: false }),
     Callout,
     Toggle,
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     DatabaseBlock,
     ImageBlock,
     HtmlBlock,
@@ -161,9 +255,12 @@ export function buildExtensions(
     PageMention,
     MathInline,
     MathBlock,
+    Footnote,
     CardRefMark,
     TrailingNode,
     ListEscape,
+    ListExitOnEnter,
+    ListIndent,
     BlockSelect,
     ...(opts.slash ? [SlashCommand.configure({ suggestion: opts.slash })] : []),
     ...(opts.mention ? [MentionCommand.configure({ suggestion: opts.mention })] : []),

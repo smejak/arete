@@ -74,11 +74,37 @@ const bump = () => {
   subs.forEach(f => f())
 }
 
-// -- storage helpers ---------------------------------------------------------
+// -- in-memory store (mirrored to the vault's .arete/history.json) -----------
+//
+// History used to live in localStorage, but every version keeps a FULL content
+// snapshot (up to PAGE_CAP per page), which blows past its ~5 MB cap on a real
+// vault — and a write throwing mid-render blanked the whole app. The vault
+// folder is the durable copy now (dumped to `.arete/history.json`, restored on
+// load), so the live store is a plain in-memory map: no quota, no throw. The
+// same string-in/string-out contract as localStorage keeps dump/restore trivial.
+
+const mem = new Map<string, string>()
+
+// One-time migration: lift any history left in localStorage by an older build
+// into memory and free the space, so existing vaults stop hitting the cap.
+try {
+  const stale: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith('arete.hist.')) stale.push(k)
+  }
+  for (const k of stale) {
+    const v = localStorage.getItem(k)
+    if (v != null) mem.set(k, v)
+    localStorage.removeItem(k)
+  }
+} catch {
+  /* no localStorage (tests) — nothing to migrate */
+}
 
 function read<T>(key: string): T[] {
   try {
-    const raw = localStorage.getItem(key)
+    const raw = mem.get(key)
     return raw ? (JSON.parse(raw) as T[]) : []
   } catch {
     return []
@@ -86,16 +112,7 @@ function read<T>(key: string): T[] {
 }
 
 function write(key: string, value: unknown[]) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // quota — drop the oldest half and retry once
-    try {
-      localStorage.setItem(key, JSON.stringify(value.slice(Math.floor(value.length / 2))))
-    } catch {
-      /* give up quietly; history is best-effort */
-    }
-  }
+  mem.set(key, JSON.stringify(value))
 }
 
 /** Keep the first version (origin) plus the most recent `cap - 1`. */
@@ -145,10 +162,38 @@ export function recordPageVersion(page: Page, cause: PageCause): boolean {
 }
 
 export function dropPageHistory(pageId: string) {
+  mem.delete(PAGE_KEY(pageId))
+}
+
+// -- vault mirror (whole history ⇄ .arete/history.json) ----------------------
+
+/** Serialize every history entry (pages, cards, events) into one JSON blob for
+ * the vault file. */
+export function dumpHistory(): string {
+  const dump: Record<string, unknown> = {}
+  for (const [key, raw] of mem) {
+    try {
+      dump[key] = JSON.parse(raw)
+    } catch {
+      /* skip */
+    }
+  }
+  return JSON.stringify(dump)
+}
+
+/** Replace the in-memory history with a vault dump. Falsy input is a no-op;
+ * '{}' clears it (a fresh workspace). */
+export function restoreHistory(json: string | null) {
+  if (!json) return
   try {
-    localStorage.removeItem(PAGE_KEY(pageId))
+    const dump = JSON.parse(json) as Record<string, unknown>
+    mem.clear()
+    for (const [key, value] of Object.entries(dump)) {
+      mem.set(key, JSON.stringify(value))
+    }
+    bump()
   } catch {
-    /* ignore */
+    /* best-effort */
   }
 }
 

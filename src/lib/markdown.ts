@@ -15,9 +15,36 @@ import type { Page } from '../store/types'
 
 type TitleResolver = (pageId: string) => string | null
 
+/** Footnote text is markdown itself, kept on one line inside `^[…]`:
+ * backslashes and `]` are escaped, newlines become literal `\n`. */
+const escFootnote = (s: string) => s.replace(/[\\\]]/g, m => '\\' + m).replace(/\n/g, '\\n')
+const unescFootnote = (s: string) => s.replace(/\\([\\\]n])/g, (_m, c: string) => (c === 'n' ? '\n' : c))
+
+/** Pandoc-style inline math: the content hugs its dollars (no space just
+ * inside either delimiter), the closing $ is neither escaped nor followed by
+ * a digit — so "$10m is smaller than $20m" is prose, not an equation. `\$`
+ * may appear inside the content (a literal dollar in LaTeX). */
+const INLINE_MATH_RE = /\$([^\s$](?:\\\$|[^$\n])*[^\s$\\]|[^\s$\\])\$(?!\d)/
+
+/** Escape the `$`s of any text span the parser would mistake for math (and
+ * double a literal backslash sitting before a `$`), so unwrapped equations
+ * and ticker-style pairs like "$AAPL$" survive the round-trip as text. */
+function escapeDollars(text: string): string {
+  if (!text.includes('$')) return text
+  let rest = text.replace(/\\(?=\$)/g, '\\\\')
+  let out = ''
+  for (;;) {
+    const m = INLINE_MATH_RE.exec(rest)
+    if (!m) return out + rest
+    out += rest.slice(0, m.index) + '\\$' + m[1] + '\\$'
+    rest = rest.slice(m.index + m[0].length)
+  }
+}
+
 function inlineToMd(node: JSONContent, resolve: TitleResolver): string {
   if (node.type === 'hardBreak') return '  \n'
-  if (node.type === 'mathInline') return `$${node.attrs?.latex ?? ''}$`
+  if (node.type === 'mathInline') return `$${((node.attrs?.latex as string) ?? '').trim()}$`
+  if (node.type === 'footnote') return `^[${escFootnote((node.attrs?.md as string) ?? '')}]`
   if (node.type === 'pageMention') {
     const title = node.attrs?.pageId ? resolve(node.attrs.pageId as string) : null
     return `[[${title ?? 'arete:' + (node.attrs?.pageId ?? '?')}]]`
@@ -30,6 +57,7 @@ function inlineToMd(node: JSONContent, resolve: TitleResolver): string {
   const get = (t: string) => marks.find(m => m.type === t)
 
   if (has('code')) out = '`' + out + '`'
+  else out = escapeDollars(out)
   if (has('bold')) out = `**${out}**`
   if (has('italic')) out = `*${out}*`
   if (has('strike')) out = `~~${out}~~`
@@ -48,6 +76,8 @@ function inlinesToMd(nodes: JSONContent[] | undefined, resolve: TitleResolver): 
   return (nodes ?? []).map(n => inlineToMd(n, resolve)).join('')
 }
 
+const LIST_TYPES = new Set(['bulletList', 'orderedList', 'taskList'])
+
 function listToMd(
   node: JSONContent,
   resolve: TitleResolver,
@@ -58,6 +88,14 @@ function listToMd(
   const lines: string[] = []
   let i = 1
   for (const item of node.content ?? []) {
+    // A list nested directly in a list (an indented run with no parent
+    // bullet) serializes as a deeper-indented block of its own.
+    if (LIST_TYPES.has(item.type ?? '')) {
+      lines.push(
+        listToMd(item, resolve, indent + '  ', item.type === 'orderedList', item.type === 'taskList'),
+      )
+      continue
+    }
     const checked = task && item.attrs?.checked === true
     const bullet = ordered ? `${i}.` : '-'
     const box = task ? (checked ? ' [x]' : ' [ ]') : ''
@@ -122,6 +160,33 @@ function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
     }
     case 'codeBlock':
       return '```\n' + ((node.content ?? []).map(c => c.text ?? '').join('') || '') + '\n```'
+    case 'table': {
+      // GFM pipe table. Cells live on one line: `|` escapes to `\|`, paragraph
+      // breaks become `<br>`, any other block content degrades to its text.
+      // GFM cannot omit the header row, so a headerless table gets an empty one.
+      const rows = node.content ?? []
+      if (!rows.length) return null
+      const cellMd = (cell: JSONContent) =>
+        (cell.content ?? [])
+          .map(b => blockToMd(b, resolve) ?? '')
+          .join('<br>')
+          .replace(/\n/g, ' ')
+          .replace(/\|/g, '\\|')
+      const cols = Math.max(1, ...rows.map(r => (r.content ?? []).length))
+      const line = (cells: string[]) => {
+        while (cells.length < cols) cells.push('')
+        return `| ${cells.join(' | ')} |`
+      }
+      const hasHeader = (rows[0].content ?? []).every(c => c.type === 'tableHeader')
+      const out = [
+        line(hasHeader ? (rows[0].content ?? []).map(cellMd) : Array(cols).fill('')),
+        `|${' --- |'.repeat(cols)}`,
+      ]
+      for (const row of hasHeader ? rows.slice(1) : rows) {
+        out.push(line((row.content ?? []).map(cellMd)))
+      }
+      return out.join('\n')
+    }
     case 'horizontalRule':
       return '---'
     case 'mathBlock':
@@ -178,6 +243,9 @@ export function sanitizeFilename(title: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 90)
+  // A name that is only dots (".", "..") becomes a path-traversal segment once
+  // it is used as a folder/file path — never let it through.
+  if (/^\.+$/.test(cleaned)) return 'Untitled'
   return cleaned || 'Untitled'
 }
 
@@ -214,7 +282,20 @@ const INLINE_PATTERNS: InlinePattern[] = [
     handle: m => [t(m[1], [{ type: 'code' }])],
   },
   {
-    re: /\$([^$\n]+)\$/,
+    // ^[footnote text] — content is escaped markdown (see escFootnote).
+    re: /\^\[((?:\\.|[^\]\\])*)\]/,
+    handle: m => [
+      { type: 'footnote', attrs: { id: crypto.randomUUID(), md: unescFootnote(m[1]) } },
+    ],
+  },
+  {
+    // \$ — a literal dollar (what the serializer emits so prose like
+    // \$AAPL\$ never parses as math).
+    re: /\\\$/,
+    handle: () => [t('$')],
+  },
+  {
+    re: INLINE_MATH_RE,
     handle: m => [{ type: 'mathInline', attrs: { latex: m[1] } }],
   },
   {
@@ -299,32 +380,161 @@ interface ListLine {
   text: string
 }
 
-function buildList(lines: ListLine[], resolve: LinkResolver): JSONContent {
-  const base = lines[0].indent
-  const ordered = lines[0].ordered
-  const task = lines[0].checked !== null
-  const items: JSONContent[] = []
+/** Build lists from a buffer of bullet lines. Indentation is absolute:
+ * deeper runs nest under the item above them, or — when there is no item
+ * above (an indented bullet with no parent) — wrap in bare nested lists,
+ * which the schema allows. A shallower line ends the run and starts a
+ * sibling; adjacent same-type siblings merge back into one list. */
+function buildLists(lines: ListLine[], resolve: LinkResolver, context = 0): JSONContent[] {
+  const blocks: JSONContent[] = []
   let i = 0
   while (i < lines.length) {
-    const line = lines[i]
-    const children: JSONContent[] = [p(parseInline(line.text, resolve))]
-    const nested: ListLine[] = []
-    i++
-    while (i < lines.length && lines[i].indent > base) {
-      nested.push(lines[i])
-      i++
+    const base = lines[i].indent
+    const ordered = lines[i].ordered
+    const task = lines[i].checked !== null
+    const items: JSONContent[] = []
+    while (i < lines.length && lines[i].indent >= base) {
+      if (lines[i].indent > base) {
+        const nested: ListLine[] = []
+        while (i < lines.length && lines[i].indent > base) nested.push(lines[i++])
+        const sub = buildLists(nested, resolve, base + 1)
+        const prev = items[items.length - 1]
+        if (prev) (prev.content as JSONContent[]).push(...sub)
+        else items.push(...sub) // deeper run before any item — direct child lists
+      } else {
+        const line = lines[i++]
+        items.push(
+          task
+            ? { type: 'taskItem', attrs: { checked: line.checked === true }, content: [p(parseInline(line.text, resolve))] }
+            : { type: 'listItem', content: [p(parseInline(line.text, resolve))] },
+        )
+      }
     }
-    if (nested.length) children.push(buildList(nested, resolve))
-    items.push(
-      task
-        ? { type: 'taskItem', attrs: { checked: line.checked === true }, content: children }
-        : { type: 'listItem', content: children },
-    )
+    let list: JSONContent = {
+      type: task ? 'taskList' : ordered ? 'orderedList' : 'bulletList',
+      content: items,
+    }
+    for (let d = base; d > context; d--) list = { type: list.type, content: [list] }
+    blocks.push(list)
   }
+  const merged: JSONContent[] = []
+  for (const b of blocks) {
+    const last = merged[merged.length - 1]
+    if (last && last.type === b.type) (last.content as JSONContent[]).push(...(b.content ?? []))
+    else merged.push(b)
+  }
+  return merged
+}
+
+// --- tables ----------------------------------------------------------------
+
+/** Split a `| a | b |` row into trimmed cell strings (`\|` stays escaped). */
+function splitRowCells(line: string): string[] {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1)
+  return s.split(/(?<!\\)\|/).map(c => c.trim())
+}
+
+const DELIM_CELL = /^:?-+:?$/
+
+/** `| --- | :---: |` — the row that turns pipe lines into a GFM table. */
+function isDelimRow(line: string): boolean {
+  const s = line.trim()
+  if (!s.startsWith('|')) return false
+  const cells = splitRowCells(s)
+  return cells.length > 0 && cells.every(c => DELIM_CELL.test(c))
+}
+
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/
+
+function tableCellNode(
+  md: string,
+  type: 'tableCell' | 'tableHeader',
+  resolve: LinkResolver,
+): JSONContent {
   return {
-    type: task ? 'taskList' : ordered ? 'orderedList' : 'bulletList',
-    content: items,
+    type,
+    content: md
+      .split(/<br\s*\/?>/i)
+      .map(part => p(parseInline(part.replace(/\\\|/g, '|'), resolve))),
   }
+}
+
+/** Assemble the TipTap table. Rows pad square (ProseMirror wants a rectangle);
+ * an all-empty header row — the serializer's stand-in for "no header" — is
+ * dropped again on the way in. */
+function tableNode(header: string[], body: string[][], resolve: LinkResolver): JSONContent | null {
+  const cols = Math.max(header.length, 1, ...body.map(r => r.length))
+  const pad = (r: string[]) => {
+    while (r.length < cols) r.push('')
+    return r
+  }
+  const rows: JSONContent[] = []
+  if (header.some(c => c.length)) {
+    rows.push({ type: 'tableRow', content: pad(header).map(c => tableCellNode(c, 'tableHeader', resolve)) })
+  }
+  for (const r of body) {
+    rows.push({ type: 'tableRow', content: pad(r).map(c => tableCellNode(c, 'tableCell', resolve)) })
+  }
+  return rows.length ? { type: 'table', content: rows } : null
+}
+
+const FLAT_DELIM_RE = /\|(\s*:?-+:?\s*\|)+/
+
+/** Recover a table that an earlier version of the paragraph joiner flattened
+ * onto one line (`| a | b | |---|---| | c | d |`) — data saved before tables
+ * existed carries this form. The delimiter segment fixes the column count;
+ * the single-space row joins show up as empty-cell artifacts between chunks
+ * of that width and are dropped. */
+function expandFlatTable(line: string): { header: string[]; body: string[][] } | null {
+  const s = line.trim()
+  if (!s.startsWith('|') || !s.endsWith('|') || s.endsWith('\\|')) return null
+  const m = FLAT_DELIM_RE.exec(s)
+  if (!m || m.index === 0 || m.index + m[0].length === s.length) return null
+  const header = splitRowCells(s.slice(0, m.index))
+  const cols = m[0].split('|').filter(c => /-/.test(c)).length
+  if (header.length !== cols) return null
+  const cells = splitRowCells(s.slice(m.index + m[0].length))
+  const body: string[][] = []
+  let row: string[] = []
+  for (const c of cells) {
+    if (row.length === cols) {
+      body.push(row)
+      row = []
+      if (c === '') continue // the row-boundary artifact
+    }
+    row.push(c)
+  }
+  if (row.length) body.push(row)
+  return body.length ? { header, body } : null
+}
+
+/** A table at lines[i]: either a proper GFM block (row, delimiter row, body
+ * rows) or a whole table flattened onto a single line. */
+function tryParseTable(
+  lines: string[],
+  i: number,
+  resolve: LinkResolver,
+): { node: JSONContent; next: number } | null {
+  const line = lines[i]
+  if (TABLE_ROW_RE.test(line) && !isDelimRow(line) && isDelimRow(lines[i + 1] ?? '')) {
+    const header = splitRowCells(line)
+    const body: string[][] = []
+    let j = i + 2
+    while (j < lines.length && TABLE_ROW_RE.test(lines[j])) {
+      body.push(splitRowCells(lines[j]))
+      j++
+    }
+    const node = tableNode(header, body, resolve)
+    if (node) return { node, next: j }
+  }
+  const flat = expandFlatTable(line)
+  if (flat) {
+    const node = tableNode(flat.header, flat.body, resolve)
+    if (node) return { node, next: i + 1 }
+  }
+  return null
 }
 
 export interface ParsedMarkdown {
@@ -359,7 +569,7 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
   let i = 0
   const flushList = () => {
     if (listBuffer.length) {
-      blocks.push(buildList([...listBuffer], resolve))
+      blocks.push(...buildLists([...listBuffer], resolve))
       listBuffer.length = 0
     }
   }
@@ -435,6 +645,15 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
       continue
     }
 
+    if (line.includes('|')) {
+      const table = tryParseTable(lines, i, resolve)
+      if (table) {
+        blocks.push(table.node)
+        i = table.next
+        continue
+      }
+    }
+
     const mediaEmbed = /^!\[([^\]|]*)(?:\|(\d+))?\]\(media\/([0-9a-f]{8})__([^)]+)\)\s*$/.exec(line)
     if (mediaEmbed) {
       const [, label, size, id, file] = mediaEmbed
@@ -503,7 +722,7 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(\s*([-*+]|\d+\.)\s|#{1,6}\s|```|\$\$|>|!\[|(!?)\[\[[^\]]+\]\]\s*$|(-{3,})\s*$)/.test(lines[i])
+      !/^(\s*([-*+]|\d+\.)\s|#{1,6}\s|```|\$\$|>|!\[|\||(!?)\[\[[^\]]+\]\]\s*$|(-{3,})\s*$)/.test(lines[i])
     ) {
       para.push(lines[i])
       i++

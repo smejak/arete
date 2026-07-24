@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
 import type { JSONContent } from '@tiptap/core'
 import type {
   CellValue,
@@ -55,6 +55,8 @@ interface AreteState {
   expanded: Record<string, boolean>
   sidebarOpen: boolean
   theme: 'light' | 'dark'
+  /** Multiplier on the reading text (editor, titles, notes) — 0.8 to 1.4. */
+  fontScale: number
   searchOpen: boolean
   /** Page whose title input should grab focus on next mount (new/renamed pages). */
   pendingFocusId: string | null
@@ -99,6 +101,7 @@ interface AreteState {
   toggleExpand: (key: string) => void
   toggleSidebar: () => void
   toggleTheme: () => void
+  setFontScale: (scale: number) => void
   setSearchOpen: (open: boolean) => void
   clearPendingFocus: () => void
   setPeek: (pageId: string | null) => void
@@ -118,6 +121,36 @@ interface AreteState {
 }
 
 const seed = buildSeed()
+
+/**
+ * localStorage that never throws. The persisted store is only a boot cache —
+ * the vault folder on disk is the durable source of truth — so a quota (or
+ * private-mode) failure drops the cache write with a warning instead of
+ * throwing mid-commit, which React would turn into a blank, restart-only screen.
+ */
+const safeStorage: StateStorage = {
+  getItem: name => {
+    try {
+      return localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name, value) => {
+    try {
+      localStorage.setItem(name, value)
+    } catch (err) {
+      console.warn('arete: could not persist to localStorage (quota?)', err)
+    }
+  },
+  removeItem: name => {
+    try {
+      localStorage.removeItem(name)
+    } catch {
+      /* ignore */
+    }
+  },
+}
 
 export const useStore = create<AreteState>()(
   persist(
@@ -164,6 +197,7 @@ export const useStore = create<AreteState>()(
           typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
             ? 'dark'
             : 'light',
+        fontScale: 1,
         searchOpen: false,
         pendingFocusId: null,
         view: 'page',
@@ -683,6 +717,8 @@ export const useStore = create<AreteState>()(
         toggleExpand: key => set(s => ({ expanded: { ...s.expanded, [key]: !s.expanded[key] } })),
         toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
         toggleTheme: () => set(s => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
+        setFontScale: scale =>
+          set({ fontScale: Math.round(Math.min(1.4, Math.max(0.8, scale)) * 100) / 100 }),
         setSearchOpen: open => {
           if (!open) pagePick.current = null
           set({ searchOpen: open })
@@ -694,6 +730,7 @@ export const useStore = create<AreteState>()(
     {
       name: 'arete',
       version: 1,
+      storage: createJSONStorage(() => safeStorage),
       partialize: s => ({
         pages: s.pages,
         favorites: s.favorites,
@@ -701,6 +738,7 @@ export const useStore = create<AreteState>()(
         expanded: s.expanded,
         sidebarOpen: s.sidebarOpen,
         theme: s.theme,
+        fontScale: s.fontScale,
         tabs: s.tabs,
         activeTabId: s.activeTabId,
       }),

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarClock,
   ExternalLink,
-  FileText,
   GraduationCap,
   Quote,
   Repeat,
@@ -14,6 +13,7 @@ import { useClock } from '../store/clock'
 import { dueAt, isDue, previewIntervals, scheduleLabel, localDay } from '../lib/srs'
 import { refText } from '../lib/refs'
 import { cx } from '../lib/util'
+import { PageIcon, iconText } from '../lib/icon'
 import type { SrsCard } from '../store/types'
 import { CardSide } from './CardTextEditor'
 
@@ -49,19 +49,76 @@ export function ReviewView() {
   const [session, setSession] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [showRefs, setShowRefs] = useState(false)
+  /** Review scope: everything, unfiled cards, or one page's deck. */
+  const [deckFilter, setDeckFilter] = useState<'all' | 'unfiled' | string>('all')
   const shownAt = useRef(Date.now())
 
   useEffect(() => {
     sweep()
   }, [sweep])
 
+  // Due counts per deck over the UNFILTERED due set — feeds the dropdown.
+  const dueByDeck = useMemo(() => {
+    const now = new Date()
+    const counts = new Map<string, number>()
+    for (const c of Object.values(cards)) {
+      if (!isDue(c, now)) continue
+      const key = c.pageId ?? 'unfiled'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, nowTick, session])
+
+  // A filtered deck whose page disappears falls back to all cards.
+  useEffect(() => {
+    if (deckFilter !== 'all' && deckFilter !== 'unfiled' && !pages[deckFilter]) setDeckFilter('all')
+  }, [deckFilter, pages])
+
+  const inDeck = (c: SrsCard) =>
+    deckFilter === 'all' || (deckFilter === 'unfiled' ? c.pageId == null : c.pageId === deckFilter)
+
   const queue = useMemo(() => {
     const now = new Date()
     return Object.values(cards)
       .filter(c => isDue(c, now))
+      .filter(inDeck)
       .sort((a, b) => (dueAt(a, now) ?? 0) - (dueAt(b, now) ?? 0))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards, nowTick, session])
+  }, [cards, nowTick, session, deckFilter])
+
+  const deckOptions = useMemo(() => {
+    const total = [...dueByDeck.values()].reduce((a, b) => a + b, 0)
+    const opts: { id: string; label: string }[] = [{ id: 'all', label: `All decks · ${total}` }]
+    const unfiled = dueByDeck.get('unfiled') ?? 0
+    if (unfiled > 0 || deckFilter === 'unfiled') opts.push({ id: 'unfiled', label: `Unfiled · ${unfiled}` })
+    const ids = [...dueByDeck.keys()].filter(k => k !== 'unfiled' && pages[k])
+    // Keep the active deck listed even once it hits 0 due, so the select
+    // doesn't jump out from under the finished session.
+    if (deckFilter !== 'all' && deckFilter !== 'unfiled' && pages[deckFilter] && !ids.includes(deckFilter)) {
+      ids.push(deckFilter)
+    }
+    ids
+      .map(id => ({ id, title: pages[id].title || 'Untitled', n: dueByDeck.get(id) ?? 0 }))
+      .sort((a, b) => b.n - a.n || a.title.localeCompare(b.title))
+      .forEach(p => opts.push({ id: p.id, label: `${p.title} · ${p.n}` }))
+    return opts
+  }, [dueByDeck, pages, deckFilter])
+
+  const deckSelect = deckOptions.length > 1 && (
+    <select
+      className="cf-mini cf-select review-deck-filter"
+      value={deckFilter}
+      onChange={e => setDeckFilter(e.target.value)}
+      title="Review one deck"
+    >
+      {deckOptions.map(o => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
 
   const current: SrsCard | undefined = queue[0]
 
@@ -118,16 +175,18 @@ export function ReviewView() {
     const now = Date.now()
     let min: number | null = null
     for (const c of Object.values(cards)) {
+      if (!inDeck(c)) continue
       const d = dueAt(c, new Date(now))
       if (d !== null && d > now && (min === null || d < min)) min = d
     }
     return min
-  }, [cards, nowTick, session]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cards, nowTick, session, deckFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!current) {
     return (
       <div className="view-scroll">
         <div className="review-wrap">
+          {deckSelect && <div className="review-meta">{deckSelect}</div>}
           <div className="review-empty">
             <GraduationCap size={28} strokeWidth={1.4} />
             <div className="review-empty-title">
@@ -157,6 +216,7 @@ export function ReviewView() {
           <span className="review-count">
             {queue.length} due · {reviewedToday} reviewed today
           </span>
+          {deckSelect}
         </div>
 
         <div className="review-card">
@@ -169,7 +229,7 @@ export function ReviewView() {
             {progress && <span className="review-progress">{progress}</span>}
             {deck && (
               <button type="button" className="review-deck" onClick={() => openPage(deck.id)}>
-                {deck.icon ?? <FileText size={12} strokeWidth={1.8} />}
+                <PageIcon icon={deck.icon} size={12} strokeWidth={1.8} />
                 <span>{deck.title || 'Untitled'}</span>
               </button>
             )}
@@ -212,7 +272,7 @@ export function ReviewView() {
                         <div className="refs-src">
                           {!live && <span className="refs-stale">as highlighted — text has changed</span>}
                           <span className="refs-page">
-                            {refPage ? `${refPage.icon ?? '📄'} ${refPage.title || 'Untitled'}` : 'Deleted page'}
+                            {refPage ? `${iconText(refPage.icon)} ${refPage.title || 'Untitled'}` : 'Deleted page'}
                           </span>
                           {refPage && (
                             <button

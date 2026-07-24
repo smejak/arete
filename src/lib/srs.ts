@@ -157,8 +157,12 @@ export function dueAt(card: SrsCard, now: Date): number | null {
     return next.getTime()
   }
 
-  // standard — FSRS owns the schedule
-  return new Date(card.fsrs.due).getTime()
+  // standard — FSRS owns the schedule. Guard the deref: a hostile/corrupt vault
+  // file can carry a card with no `fsrs` (or a bad `due`), and this runs in
+  // render-time memos outside any error boundary — treat it as never-due rather
+  // than throwing and white-screening the app.
+  const due = card.fsrs ? new Date(card.fsrs.due).getTime() : NaN
+  return Number.isFinite(due) ? due : null
 }
 
 export function isDue(card: SrsCard, now: Date): boolean {
