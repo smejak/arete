@@ -88,6 +88,9 @@ export type MenuEntry =
     }
   | { kind: 'sep' }
   | { kind: 'note'; label: string }
+  /** A setting rather than an action: reads as one, and the switch is a fixed
+   * width so turning it on cannot resize the menu. */
+  | { kind: 'toggle'; icon?: LucideIcon; label: string; on: boolean; onSelect: () => void }
 
 export function Menu({ entries }: { entries: MenuEntry[] }) {
   return (
@@ -100,6 +103,26 @@ export function Menu({ entries }: { entries: MenuEntry[] }) {
               {entry.label}
             </div>
           )
+        if (entry.kind === 'toggle') {
+          const Icon = entry.icon
+          return (
+            <button
+              key={i}
+              type="button"
+              className="menu-item menu-toggle"
+              role="switch"
+              aria-checked={entry.on}
+              onClick={e => {
+                e.stopPropagation()
+                entry.onSelect()
+              }}
+            >
+              {Icon && <Icon size={15} strokeWidth={1.7} />}
+              <span className="menu-label">{entry.label}</span>
+              <span className={cx('menu-switch', entry.on && 'is-on')} />
+            </button>
+          )
+        }
         const Icon = entry.icon
         return (
           <button

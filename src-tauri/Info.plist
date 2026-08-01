@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- WebKit hides navigator.mediaDevices entirely from an embedded webview
+	     whose host app declares no purpose string: without this key the audio
+	     block cannot record at all, and the failure looks like a missing API
+	     rather than a missing permission. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Arete records voice notes and audio flashcards with your microphone.</string>
+</dict>
+</plist>

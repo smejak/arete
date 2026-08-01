@@ -1,0 +1,312 @@
+/* ---------------------------------------------------------------------------
+   Audio — voice recordings and imported clips
+   One horizontal bar in three states: armed, recording, playing. Quiet enough
+   to sit in a paragraph's flow; nothing about it moves unless it is running.
+--------------------------------------------------------------------------- */
+
+.audio-block {
+  margin: 8px 0;
+}
+
+.audio-shell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Every state — armed, recording, playing — is the same height, so the
+     block does not jump when a take finishes. */
+  min-height: 64px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-pop);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.audio-block.is-selected .audio-shell {
+  background: var(--glow);
+}
+
+.audio-shell.is-missing {
+  color: var(--text-3);
+  border-style: dashed;
+}
+
+/* -- the player ----------------------------------------------------------
+   The whole face plays and pauses, so the target is the block rather than a
+   button. Only two things opt out: the scrubber pinned to the bottom edge and
+   the speed control, each with room around it so neither is hit by accident. */
+
+.audio-shell.is-player {
+  position: relative;
+  display: block;
+  min-height: 56px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.audio-shell.is-player:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.audio-face {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* The bottom padding is the buffer over the scrubber's hit strip. */
+  padding: 11px 12px 17px;
+}
+
+.audio-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  transition: background 120ms ease;
+}
+
+.audio-shell.is-player:hover .audio-glyph {
+  background: var(--accent-strong);
+}
+
+.audio-time {
+  flex: none;
+  color: var(--text);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.audio-total {
+  color: var(--text-3);
+}
+
+.audio-gap {
+  flex: 1;
+}
+
+.audio-rate,
+.audio-clear {
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  padding: 5px 9px;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.audio-rate {
+  min-width: 42px;
+  color: var(--text-2);
+}
+
+.audio-rate:hover,
+.audio-clear:hover {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.audio-clear {
+  display: grid;
+  place-items: center;
+  opacity: 0;
+}
+
+.audio-shell:hover .audio-clear {
+  opacity: 1;
+}
+
+.audio-clear:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* The scrubber owns the bottom edge: a tall invisible strip to grab, with the
+   visible line sitting on the very bottom of the block. */
+.audio-scrub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14px;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+}
+
+.audio-scrub::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--progress-track);
+}
+
+.audio-scrub-fill {
+  position: relative;
+  height: 4px;
+  background: var(--accent);
+  /* timeupdate fires ~4×/s; a short linear ease keeps the line from stepping
+     without lagging behind a seek. */
+  transition: width 120ms linear;
+}
+
+.audio-scrub:hover::before,
+.audio-scrub:hover .audio-scrub-fill {
+  height: 6px;
+}
+
+/* Touch has no hover to reveal anything with, and a 14px strip is a poor
+   target for a finger — on the phone the remove button stays visible and the
+   scrubber gets a taller grab area. */
+@media (hover: none), (pointer: coarse) {
+  .audio-clear {
+    opacity: 1;
+  }
+
+  .audio-scrub {
+    height: 22px;
+  }
+
+  .audio-face {
+    padding-bottom: 24px;
+  }
+}
+
+/* -- recorder ------------------------------------------------------------ */
+
+.audio-record,
+.audio-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.audio-record {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.audio-record:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.audio-stop {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.audio-stop:hover {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.audio-cancel {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.audio-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.audio-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.audio-warn {
+  margin-top: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.audio-elapsed {
+  flex: none;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.audio-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: audio-pulse 1.4s ease-in-out infinite;
+}
+
+/* Arming reads as "not yet": amber, and hurrying, so the switch to the steady
+   red pulse is the unmistakable "speak now". */
+.audio-dot.is-arming {
+  background: var(--text-3);
+  animation-duration: 0.6s;
+}
+
+@keyframes audio-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.audio-meter {
+  flex: 1;
+  min-width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.audio-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 90ms linear;
+}

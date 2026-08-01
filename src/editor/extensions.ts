@@ -21,8 +21,14 @@ import { Footnote } from './nodes/Footnote'
 import { Toggle } from './nodes/Toggle'
 import { DatabaseBlock } from './nodes/DatabaseBlock'
 import { HtmlBlock, ImageBlock, MediaPaste } from './nodes/Media'
+import { AudioBlock } from './nodes/Audio'
+import { ProgressBlock } from './nodes/Progress'
 import { BlockSelect } from './BlockSelect'
+import { BlockFlash } from './BlockFlash'
+import { BlockTags } from './BlockTags'
 import { PageLink } from './nodes/PageLink'
+import { BlockRef } from './nodes/BlockRef'
+import { GroupRef } from './nodes/GroupRef'
 import { PageMention } from './nodes/PageMention'
 import { MathBlock, MathInline } from './nodes/Math'
 import { CardRefMark } from './marks/CardRef'
@@ -176,7 +182,9 @@ export function buildCardExtensions(
     TableCell,
     ImageBlock,
     HtmlBlock,
+    AudioBlock,
     MediaPaste,
+    ProgressBlock,
     MathInline,
     MathBlock,
     // Schema-complete so `^[…]` in card markdown parses (rendered as an
@@ -250,9 +258,15 @@ export function buildExtensions(
     DatabaseBlock,
     ImageBlock,
     HtmlBlock,
+    AudioBlock,
     MediaPaste,
+    ProgressBlock,
     PageLink,
     PageMention,
+    BlockRef,
+    GroupRef,
+    BlockFlash,
+    BlockTags,
     MathInline,
     MathBlock,
     Footnote,

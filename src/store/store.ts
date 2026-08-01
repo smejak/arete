@@ -21,6 +21,8 @@ import {
   stripOwnedLink,
 } from '../lib/tree'
 import { appendEvent, recordPageVersion, type PageVersion } from '../lib/history'
+import type { BlockHit } from '../lib/blocks'
+import type { BlockAddr, TagDef, TagKind } from '../lib/tags'
 import { changeFieldType, createDatabaseDef, defaultFieldName } from '../lib/db'
 
 export type DropSpot = { type: 'before' | 'after' | 'inside'; id: string } | { type: 'root-end' }
@@ -42,10 +44,61 @@ export interface Tab {
 const sameLoc = (a: NavLoc, b: NavLoc) => a.view === b.view && a.pageId === b.pageId
 
 /**
+ * Rewrite the tags of every block in every page, at any depth.
+ *
+ * Depth matters: the block handle descends into callouts, toggles and list
+ * items, so a tag can sit well below the top level. Renaming or removing one
+ * by walking only a page's direct children left those behind.
+ */
+function mapTags(
+  pages: Record<string, Page>,
+  fn: (tags: string[]) => string[],
+): { pages: Record<string, Page>; touched: boolean } {
+  let touched = false
+  const rewrite = (node: JSONContent): JSONContent => {
+    const kids = node.content
+    const nextKids = kids?.map(rewrite)
+    const changedKids = !!nextKids && !!kids && nextKids.some((k, i) => k !== kids[i])
+    const tags = (node.attrs?.tags as string[] | undefined) ?? null
+    let attrs = node.attrs
+    if (tags) {
+      const next = fn(tags)
+      if (next !== tags) {
+        touched = true
+        attrs = { ...node.attrs, tags: next.length ? next : null }
+      }
+    }
+    if (attrs === node.attrs && !changedKids) return node
+    return { ...node, ...(attrs !== node.attrs ? { attrs } : {}), ...(changedKids ? { content: nextKids } : {}) }
+  }
+
+  const out: Record<string, Page> = { ...pages }
+  for (const page of Object.values(pages)) {
+    if (!page.content) continue
+    const before: boolean = touched
+    const content = rewrite(page.content)
+    if (touched !== before) out[page.id] = { ...page, updatedAt: Date.now(), content }
+  }
+  return { pages: out, touched }
+}
+
+/**
  * When set, the next page chosen in the search palette is handed to this
  * callback (e.g. "Link to page" from the slash menu) instead of navigated to.
  */
 export const pagePick: { current: ((pageId: string) => void) | null } = { current: null }
+
+/**
+ * The same handshake for text blocks: "/" opens the block palette, and what
+ * you choose is handed back to whichever command asked for it — a reference
+ * or a copy.
+ */
+export type BlockPick =
+  | { kind: 'block'; hit: BlockHit }
+  /** A whole group, by tag — resolved to its blocks, in order, at use time. */
+  | { kind: 'group'; tag: string }
+
+export const blockPick: { current: ((pick: BlockPick) => void) | null } = { current: null }
 
 interface AreteState {
   pages: Record<string, Page>
@@ -58,12 +111,25 @@ interface AreteState {
   /** Multiplier on the reading text (editor, titles, notes) — 0.8 to 1.4. */
   fontScale: number
   searchOpen: boolean
+  /** The block palette — the same picker as search, over text blocks. */
+  blockSearchOpen: boolean
+  /** Presentation for the tag vocabulary: colour, and a group's ordering.
+   * Never the source of what exists — that is whatever blocks actually carry. */
+  tagRegistry: TagDef[]
+  /** Group opened in the centred window, by tag name. */
+  openGroup: string | null
+  /** The whole vocabulary, in one place. */
+  tagManagerOpen: boolean
+  /** Copying a page swaps block references for the text they point at. Off by
+   * default: a reference is a pointer, and that is usually what you want. */
+  copyRefsAsText: boolean
   /** Page whose title input should grab focus on next mount (new/renamed pages). */
   pendingFocusId: string | null
   /** Which main surface is showing. */
   view: AppView
-  /** Card whose highlights should flash in the open page, then clear. */
-  flash: { cardId: string; pageId: string } | null
+  /** What should flash in the open page once it paints, then clear: a card's
+   * highlights, or the text of a block someone followed a reference to. */
+  flash: { pageId: string; cardId?: string; text?: string } | null
   /** Bumped when a page is restored from history so the editor remounts. */
   restoreNonce: number
   /** Open tabs; `view`/`activePageId` always mirror the active tab's loc. */
@@ -74,6 +140,8 @@ interface AreteState {
 
   setView: (view: AppView) => void
   flashRefs: (cardId: string, pageId: string) => void
+  /** Open a page and light up the block whose text this is. */
+  flashBlock: (pageId: string, text: string) => void
   clearFlash: () => void
   restorePage: (id: string, version: PageVersion) => void
   goBack: () => void
@@ -103,6 +171,15 @@ interface AreteState {
   toggleTheme: () => void
   setFontScale: (scale: number) => void
   setSearchOpen: (open: boolean) => void
+  setBlockSearchOpen: (open: boolean) => void
+  setTagColor: (name: string, color: TagDef['color']) => void
+  setTagKind: (name: string, kind: TagKind) => void
+  setTagOrder: (name: string, order: BlockAddr[]) => void
+  renameTag: (from: string, to: string) => void
+  removeTagEverywhere: (name: string) => void
+  setOpenGroup: (tag: string | null) => void
+  setTagManagerOpen: (open: boolean) => void
+  setCopyRefsAsText: (on: boolean) => void
   clearPendingFocus: () => void
   setPeek: (pageId: string | null) => void
 
@@ -199,6 +276,11 @@ export const useStore = create<AreteState>()(
             : 'light',
         fontScale: 1,
         searchOpen: false,
+        blockSearchOpen: false,
+        tagRegistry: [],
+        openGroup: null,
+        tagManagerOpen: false,
+        copyRefsAsText: false,
         pendingFocusId: null,
         view: 'page',
         flash: null,
@@ -216,6 +298,16 @@ export const useStore = create<AreteState>()(
             ...navigate(s, { view: 'page', pageId }),
             searchOpen: false,
             flash: { cardId, pageId },
+          }))
+        },
+
+        flashBlock: (pageId, text) => {
+          if (!get().pages[pageId]) return
+          set(s => ({
+            ...navigate(s, { view: 'page', pageId }),
+            searchOpen: false,
+            blockSearchOpen: false,
+            flash: { pageId, text },
           }))
         },
 
@@ -723,6 +815,83 @@ export const useStore = create<AreteState>()(
           if (!open) pagePick.current = null
           set({ searchOpen: open })
         },
+        setBlockSearchOpen: open => {
+          if (!open) blockPick.current = null
+          set({ blockSearchOpen: open })
+        },
+
+        // The registry only ever holds presentation, so every writer here is
+        // an upsert against a vocabulary it does not own.
+        setTagColor: (name, color) =>
+          set(s => {
+            const has = s.tagRegistry.some(t => t.name === name)
+            return {
+              tagRegistry: has
+                ? s.tagRegistry.map(t => (t.name === name ? { ...t, color } : t))
+                : [...s.tagRegistry, { name, color }],
+            }
+          }),
+
+        setTagKind: (name, kind) =>
+          set(s => {
+            const has = s.tagRegistry.some(t => t.name === name)
+            return {
+              tagRegistry: has
+                ? s.tagRegistry.map(t =>
+                    t.name === name
+                      ? // Demoting drops the ordering: a category has no
+                        // sequence, and keeping a stale one would resurface if
+                        // it were ever promoted again.
+                        kind === 'group'
+                        ? { ...t, kind }
+                        : { ...t, kind, order: undefined }
+                      : t,
+                  )
+                : [...s.tagRegistry, { name, color: 'default' as const, kind }],
+            }
+          }),
+
+        setTagOrder: (name, order) =>
+          set(s => {
+            const has = s.tagRegistry.some(t => t.name === name)
+            return {
+              tagRegistry: has
+                ? s.tagRegistry.map(t => (t.name === name ? { ...t, order } : t))
+                : [...s.tagRegistry, { name, color: 'default', order }],
+            }
+          }),
+
+        renameTag: (from, to) =>
+          set(s => {
+            if (!to || from === to) return s
+            const { pages, touched } = mapTags(s.pages, tags =>
+              tags.includes(from)
+                ? Array.from(new Set(tags.map(t => (t === from ? to : t))))
+                : tags,
+            )
+            const merged = s.tagRegistry.find(t => t.name === to)
+            return {
+              ...(touched ? { pages } : {}),
+              tagRegistry: s.tagRegistry
+                .filter(t => t.name !== (merged ? from : '\0'))
+                .map(t => (t.name === from ? { ...t, name: to } : t)),
+            }
+          }),
+
+        removeTagEverywhere: name =>
+          set(s => {
+            const { pages, touched } = mapTags(s.pages, tags =>
+              tags.includes(name) ? tags.filter(t => t !== name) : tags,
+            )
+            return {
+              ...(touched ? { pages } : {}),
+              tagRegistry: s.tagRegistry.filter(t => t.name !== name),
+            }
+          }),
+
+        setOpenGroup: tag => set({ openGroup: tag }),
+        setTagManagerOpen: open => set({ tagManagerOpen: open }),
+        setCopyRefsAsText: on => set({ copyRefsAsText: on }),
         clearPendingFocus: () => set({ pendingFocusId: null }),
         setPeek: pageId => set(s => (s.pages[pageId ?? ''] || pageId === null ? { peekPageId: pageId } : s)),
       }
@@ -741,6 +910,11 @@ export const useStore = create<AreteState>()(
         fontScale: s.fontScale,
         tabs: s.tabs,
         activeTabId: s.activeTabId,
+        // The vault's meta.json is the durable copy, but the boot cache has to
+        // carry it too — otherwise a reload before the next vault read leaves
+        // every group looking like a category that lost its colour.
+        tagRegistry: s.tagRegistry,
+        copyRefsAsText: s.copyRefsAsText,
       }),
     },
   ),

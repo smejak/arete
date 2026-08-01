@@ -1,8 +1,10 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import {
   BarChart3,
+  Check,
   Copy,
   GraduationCap,
+  Link2,
   History,
   Layers,
   Minus,
@@ -20,6 +22,7 @@ import type { FontKey, Page } from '../store/types'
 import { ancestorsOf, descendantsOf, wordCount } from '../lib/tree'
 import { cx, fmtRelative } from '../lib/util'
 import { PageIcon, iconText } from '../lib/icon'
+import { copyText, pageMarkdown } from '../lib/copy'
 import { Menu, Popover } from './Popover'
 import { PageHistoryModal } from './PageHistoryModal'
 import { ShareModal } from './ShareModal'
@@ -55,6 +58,23 @@ export function Topbar({ page }: { page: Page | null }) {
   const [overflowAt, setOverflowAt] = useState<DOMRect | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef(0)
+
+  const copyRefsAsText = useStore(s => s.copyRefsAsText)
+  const setCopyRefsAsText = useStore(s => s.setCopyRefsAsText)
+  const tagRegistry = useStore(s => s.tagRegistry)
+
+  const copyPage = async () => {
+    if (!page) return
+    const ok = await copyText(
+      pageMarkdown(page, pages, tagRegistry, { expandRefs: copyRefsAsText }),
+    )
+    if (!ok) return
+    setCopied(true)
+    window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 1400)
+  }
 
   const inPageView = view === 'page'
   const viewMeta = !inPageView ? VIEW_META[view] : null
@@ -67,7 +87,14 @@ export function Topbar({ page }: { page: Page | null }) {
   const fav = page ? favorites.includes(page.id) : false
   const subCount = page ? descendantsOf(pages, page.id).length : 0
 
+  /** When the menu last closed. The popover dismisses on the pointerdown that
+   * lands outside it — including the one on this very button — and the click
+   * that follows would open it straight back up, so the menu appeared to
+   * flash rather than toggle. Swallow that one click. */
+  const menuClosedAt = useRef(0)
+
   const closeMenu = () => {
+    menuClosedAt.current = Date.now()
     setMenuAt(null)
     setConfirming(false)
   }
@@ -115,6 +142,20 @@ export function Topbar({ page }: { page: Page | null }) {
       </div>
 
       <div className="topbar-side">
+        {page && inPageView && (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => void copyPage()}
+            title={copied ? 'Copied' : 'Copy page as markdown'}
+          >
+            {copied ? (
+              <Check size={16} strokeWidth={2.1} />
+            ) : (
+              <Copy size={16} strokeWidth={1.7} />
+            )}
+          </button>
+        )}
         <button
           type="button"
           className="icon-btn"
@@ -131,7 +172,10 @@ export function Topbar({ page }: { page: Page | null }) {
           <button
             type="button"
             className="icon-btn"
-            onClick={e => setMenuAt(e.currentTarget.getBoundingClientRect())}
+            onClick={e => {
+              if (Date.now() - menuClosedAt.current < 250) return
+              setMenuAt(e.currentTarget.getBoundingClientRect())
+            }}
             title="Page options"
           >
             <MoreHorizontal size={16} strokeWidth={1.7} />
@@ -251,6 +295,14 @@ export function Topbar({ page }: { page: Page | null }) {
                       duplicatePage(page.id)
                     },
                   },
+                  {
+                    kind: 'toggle' as const,
+                    icon: Link2,
+                    label: 'Expand references',
+                    on: copyRefsAsText,
+                    onSelect: () => setCopyRefsAsText(!copyRefsAsText),
+                  },
+                  { kind: 'sep' as const },
                   {
                     icon: Share,
                     label: 'Share & export…',

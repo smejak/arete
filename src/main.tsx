@@ -23,6 +23,8 @@ import './styles/sidebar.css'
 import './styles/page.css'
 import './styles/editor.css'
 import './styles/menus.css'
+import './styles/progress.css'
+import './styles/audio.css'
 import './styles/db.css'
 import './styles/srs.css'
 

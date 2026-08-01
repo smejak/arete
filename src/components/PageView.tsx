@@ -23,6 +23,7 @@ import {
   Sparkles,
   SquareCode,
   Strikethrough,
+  Tag as TagIcon,
   TextQuote,
   Trash2,
   Type,
@@ -38,7 +39,7 @@ import { randomEmoji } from '../lib/emoji'
 import { cx } from '../lib/util'
 import { PageIcon } from '../lib/icon'
 import { recordPageVersion } from '../lib/history'
-import { applyCardRefMark, flashCardRefs, removeCardRefMarks } from '../lib/refs'
+import { applyCardRefMark, flashBlockText, flashCardRefs, removeCardRefMarks } from '../lib/refs'
 import { EmojiPicker } from './EmojiPicker'
 import { CoverPicker } from './CoverPicker'
 import { SlashMenu, useSuggestionMenu } from './SlashMenu'
@@ -48,6 +49,7 @@ import { CardComposer, parseTags, type CardDraft } from './CardComposer'
 import { LinkMenu } from './LinkMenu'
 import { FootnoteMargin } from './FootnoteMargin'
 import { RowPageProps } from './db/RowPageProps'
+import { BlockTagRow } from './BlockTagRow'
 import type { SlashItem } from '../editor/SlashCommand'
 import type { MentionEntry } from '../editor/MentionCommand'
 
@@ -135,7 +137,11 @@ export function PageView({ pageId }: { pageId: string }) {
   const pendingFocusId = useStore(s => s.pendingFocusId)
   const clearPendingFocus = useStore(s => s.clearPendingFocus)
   const flash = useStore(s => s.flash)
+  const flashRef = useRef(flash)
+  flashRef.current = flash
   const clearFlash = useStore(s => s.clearFlash)
+  const setOpenGroup = useStore(s => s.setOpenGroup)
+  const setTagManagerOpen = useStore(s => s.setTagManagerOpen)
 
   const [title, setTitle] = useState(page?.title ?? '')
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -253,6 +259,13 @@ export function PageView({ pageId }: { pageId: string }) {
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!editor || !el) return
+    // Arriving at a block reference beats coming back to where you were: the
+    // flash owns the scroll, and re-applying the remembered offset would drag
+    // the reader off the paragraph they asked for. Read through a ref — as a
+    // dependency it would re-run the moment the flash cleared, which is
+    // exactly when the restore must not fire.
+    const pending = flashRef.current
+    if (pending?.pageId === pageId && pending.text) return
     const saved = scrollMemory.get(pageId) ?? 0
     el.scrollTop = saved
     const raf = requestAnimationFrame(() => {
@@ -354,7 +367,13 @@ export function PageView({ pageId }: { pageId: string }) {
     let timer: number
     const attempt = () => {
       const container = scrollRef.current
-      const found = container ? flashCardRefs(container, flash.cardId) : false
+      const found = !container
+        ? false
+        : flash.cardId
+          ? flashCardRefs(container, flash.cardId)
+          : flash.text
+            ? flashBlockText(editor, flash.text)
+            : true
       if (!found && tries++ < 25) {
         timer = window.setTimeout(attempt, 120)
       } else {
@@ -663,25 +682,33 @@ export function PageView({ pageId }: { pageId: string }) {
     if (!composer) return
     flushContent() // marks must be in the stored doc before refs resolve
     const now = Date.now()
-    useSrsStore.getState().createCard({
-      id: composer.cardId,
-      front: draft.front.trim(),
-      back: draft.back.trim(),
-      tags: parseTags(draft.tagsText),
-      pageId,
-      refs: composer.refs.map(r => ({
-        refId: r.refId,
+    try {
+      useSrsStore.getState().createCard({
+        id: composer.cardId,
+        front: draft.front.trim(),
+        back: draft.back.trim(),
+        tags: parseTags(draft.tagsText),
         pageId,
-        snapshot: r.snapshot,
-        createdAt: now,
-      })),
-      type: draft.type,
-      routine: draft.type === 'routine' ? draft.routine : undefined,
-      temp: draft.type === 'temp' ? draft.temp : undefined,
-    })
-    createdRef.current = true
-    setComposer(null)
-    setCapturing(false)
+        refs: composer.refs.map(r => ({
+          refId: r.refId,
+          pageId,
+          snapshot: r.snapshot,
+          createdAt: now,
+        })),
+        type: draft.type,
+        routine: draft.type === 'routine' ? draft.routine : undefined,
+        temp: draft.type === 'temp' ? draft.temp : undefined,
+      })
+    } catch (err) {
+      // The card is written before anything that can throw, so it exists —
+      // closing regardless is what keeps a successful create from looking
+      // like a dead button.
+      console.error('arete: creating a card threw after the card was saved', err)
+    } finally {
+      createdRef.current = true
+      setComposer(null)
+      setCapturing(false)
+    }
   }
 
   return (
@@ -778,6 +805,19 @@ export function PageView({ pageId }: { pageId: string }) {
 
       {blockMenu && (
         <Popover anchor={blockMenu.at} onClose={closeBlockMenu}>
+          {editor && (
+            <>
+              <BlockTagRow
+                editor={editor}
+                pos={blockMenu.pos}
+                onOpenGroup={tag => {
+                  closeBlockMenu()
+                  setOpenGroup(tag)
+                }}
+              />
+              <div className="menu-sep" />
+            </>
+          )}
           {blockMenuNode && !blockMenuNode.isAtom && (
             <>
               <div className="menu-note">Turn into</div>
@@ -799,6 +839,14 @@ export function PageView({ pageId }: { pageId: string }) {
           )}
           <Menu
             entries={[
+              {
+                icon: TagIcon,
+                label: 'Manage tags…',
+                onSelect: () => {
+                  closeBlockMenu()
+                  setTagManagerOpen(true)
+                },
+              },
               ...(blockMenuNode?.type.name === 'callout' && !blockMenuNode.attrs.emoji
                 ? [
                     {

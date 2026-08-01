@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Archive,
   ArchiveRestore,
@@ -40,6 +40,8 @@ function dueLabel(card: SrsCard, now: number): string {
 
 export function CardsView() {
   const cards = useSrsStore(s => s.cards)
+  const setArchived = useSrsStore(s => s.setArchived)
+  const deleteCards = useSrsStore(s => s.deleteCards)
   const pages = useStore(s => s.pages)
   const nowTick = useClock(s => s.nowTick)
 
@@ -50,6 +52,10 @@ export function CardsView() {
   const [tag, setTag] = useState<'all' | string>('all')
   const [editing, setEditing] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [confirming, setConfirming] = useState(false)
+  /** Anchor for shift-click ranges. */
+  const anchor = useRef<string | null>(null)
 
   const all = useMemo(() => Object.values(cards), [cards])
 
@@ -78,6 +84,50 @@ export function CardsView() {
       })
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }, [all, q, deck, type, status, tag])
+
+  // A selection only ever means the rows you can see: narrowing the filters,
+  // or deleting cards, drops whatever left the list rather than keeping it
+  // silently staged for the next bulk action.
+  useEffect(() => {
+    setSelected(prev => {
+      if (!prev.size) return prev
+      const visible = new Set(filtered.map(c => c.id))
+      const next = new Set([...prev].filter(id => visible.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [filtered])
+
+  useEffect(() => {
+    if (!selected.size) setConfirming(false)
+  }, [selected.size])
+
+  const toggleSelect = (id: string, extend: boolean) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      const ids = filtered.map(c => c.id)
+      const from = anchor.current ? ids.indexOf(anchor.current) : -1
+      const to = ids.indexOf(id)
+      if (extend && from !== -1 && to !== -1) {
+        // Shift-click extends rather than toggles — the whole run joining the
+        // selection is the point of reaching for shift in a long list.
+        for (let i = Math.min(from, to); i <= Math.max(from, to); i++) next.add(ids[i])
+      } else if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      anchor.current = id
+      return next
+    })
+  }
+
+  const chosen = useMemo(() => filtered.filter(c => selected.has(c.id)), [filtered, selected])
+  const activeChosen = chosen.filter(c => !c.archived).length
+  const archivedChosen = chosen.length - activeChosen
+  const clearSelection = () => {
+    anchor.current = null
+    setSelected(new Set())
+  }
 
   return (
     <div className="view-scroll">
@@ -139,6 +189,84 @@ export function CardsView() {
           )}
         </div>
 
+        {selected.size > 0 && (
+          <div className="cards-bulk">
+            {confirming ? (
+              <div className="confirm-inline">
+                <span>
+                  Delete {chosen.length} {chosen.length === 1 ? 'card' : 'cards'} forever? Their
+                  history stays in the timeline.
+                </span>
+                <button type="button" className="btn" onClick={() => setConfirming(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => {
+                    deleteCards(chosen.map(c => c.id))
+                    clearSelection()
+                  }}
+                >
+                  Delete {chosen.length}
+                </button>
+              </div>
+            ) : (
+              <>
+                <span className="cards-bulk-n">{chosen.length} selected</span>
+                {chosen.length < filtered.length && (
+                  <button
+                    type="button"
+                    className="pop-action"
+                    onClick={() => setSelected(new Set(filtered.map(c => c.id)))}
+                  >
+                    Select all {filtered.length}
+                  </button>
+                )}
+                <button type="button" className="pop-action" onClick={clearSelection}>
+                  Clear
+                </button>
+                <span className="cards-bulk-gap" />
+                {activeChosen > 0 && (
+                  <button
+                    type="button"
+                    className="pop-action"
+                    title="Keep forever, stop scheduling"
+                    onClick={() => {
+                      setArchived(
+                        chosen.map(c => c.id),
+                        true,
+                      )
+                      clearSelection()
+                    }}
+                  >
+                    <Archive size={12} strokeWidth={2} /> Archive {activeChosen}
+                  </button>
+                )}
+                {archivedChosen > 0 && (
+                  <button
+                    type="button"
+                    className="pop-action"
+                    title="Bring back into rotation"
+                    onClick={() => {
+                      setArchived(
+                        chosen.map(c => c.id),
+                        false,
+                      )
+                      clearSelection()
+                    }}
+                  >
+                    <ArchiveRestore size={12} strokeWidth={2} /> Unarchive {archivedChosen}
+                  </button>
+                )}
+                <button type="button" className="pop-action is-danger" onClick={() => setConfirming(true)}>
+                  <Trash2 size={12} strokeWidth={2} /> Delete…
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="cards-empty">
             <Layers size={26} strokeWidth={1.4} />
@@ -148,46 +276,57 @@ export function CardsView() {
             </div>
           </div>
         ) : (
-          <div className="cards-list">
+          <div className={cx('cards-list', selected.size > 0 && 'is-selecting')}>
             {filtered.map(card => {
               const TypeIcon = TYPE_ICON[card.type]
               const deckPage = card.pageId ? pages[card.pageId] : null
               const r = retrievability(card, new Date(nowTick))
+              const isSelected = selected.has(card.id)
               return (
-                <button
+                <div
                   key={card.id}
-                  type="button"
-                  className={cx('card-row', card.archived && 'is-archived')}
-                  onClick={() => setEditing(card.id)}
+                  className={cx('card-row', card.archived && 'is-archived', isSelected && 'is-selected')}
                 >
-                  <span className={cx('type-chip', 'type-' + card.type)}>
-                    <TypeIcon size={12} strokeWidth={1.9} />
-                  </span>
-                  <span className="card-row-main">
-                    <span className="card-row-front">{stripMd(card.front) || 'Untitled card'}</span>
-                    <span className="card-row-sub">
-                      {card.back && <span className="card-row-back">{stripMd(card.back)}</span>}
-                      {card.tags.map(t => (
-                        <span key={t} className="tag-chip">
-                          #{t}
-                        </span>
-                      ))}
+                  <input
+                    type="checkbox"
+                    className="card-check"
+                    checked={isSelected}
+                    aria-label="Select card"
+                    // onClick, not onChange: only the mouse event carries the
+                    // shift key that extends a range.
+                    onChange={() => {}}
+                    onClick={e => toggleSelect(card.id, e.shiftKey)}
+                  />
+                  <button type="button" className="card-row-body" onClick={() => setEditing(card.id)}>
+                    <span className={cx('type-chip', 'type-' + card.type)}>
+                      <TypeIcon size={12} strokeWidth={1.9} />
                     </span>
-                  </span>
-                  <span className="card-row-deck">
-                    {card.pageId
-                      ? deckPage
-                        ? `${iconText(deckPage.icon)} ${deckPage.title || 'Untitled'}`
-                        : 'Deleted page'
-                      : 'Unfiled'}
-                  </span>
-                  <span className="card-row-r" title="Estimated recall right now">
-                    {card.fsrs.reps > 0 ? Math.round(r * 100) + '%' : '—'}
-                  </span>
-                  <span className={cx('card-row-due', !card.archived && dueLabel(card, nowTick) === 'due now' && 'is-due')}>
-                    {dueLabel(card, nowTick)}
-                  </span>
-                </button>
+                    <span className="card-row-main">
+                      <span className="card-row-front">{stripMd(card.front) || 'Untitled card'}</span>
+                      <span className="card-row-sub">
+                        {card.back && <span className="card-row-back">{stripMd(card.back)}</span>}
+                        {card.tags.map(t => (
+                          <span key={t} className="tag-chip">
+                            #{t}
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                    <span className="card-row-deck">
+                      {card.pageId
+                        ? deckPage
+                          ? `${iconText(deckPage.icon)} ${deckPage.title || 'Untitled'}`
+                          : 'Deleted page'
+                        : 'Unfiled'}
+                    </span>
+                    <span className="card-row-r" title="Estimated recall right now">
+                      {card.fsrs.reps > 0 ? Math.round(r * 100) + '%' : '—'}
+                    </span>
+                    <span className={cx('card-row-due', !card.archived && dueLabel(card, nowTick) === 'due now' && 'is-due')}>
+                      {dueLabel(card, nowTick)}
+                    </span>
+                  </button>
+                </div>
               )
             })}
           </div>

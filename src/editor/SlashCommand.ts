@@ -20,14 +20,25 @@ import {
   Superscript,
   Table,
   Grid2x2,
+  CircleDashed,
+  Mic,
+  AudioLines,
   FileCode2,
   FilePlus2,
   Image as ImageIcon,
   Link as LinkIcon,
+  CornerDownRight,
+  ClipboardPaste,
   type LucideIcon,
 } from 'lucide-react'
-import { pagePick, useStore } from '../store/store'
+import { blockPick, pagePick, useStore } from '../store/store'
+import { groupBlocks } from '../lib/tags'
+
+const groupOrder = (tag: string) =>
+  useStore.getState().tagRegistry.find(t => t.name === tag)?.order
 import { saveMedia } from '../lib/media'
+import { probeDuration } from '../lib/audio'
+import { emptyBar, PROGRESS_DEFAULT_SIZE } from '../lib/progress'
 import { pickFile } from './nodes/Media'
 
 export interface SlashItem {
@@ -51,8 +62,13 @@ export function insertBlock(
   range: Range,
   content: JSONContent,
   selectOffset?: number,
+  /** Blocks whose node view claims focus itself pass `false` — TipTap's
+   * `focus()` defers to rAF and would swallow the first keystrokes. */
+  focus = true,
 ) {
-  editor.chain().focus().deleteRange(range).run()
+  const opening = editor.chain()
+  if (focus) opening.focus()
+  opening.deleteRange(range).run()
   const sel = editor.state.selection
   const { $from } = sel
   const replaceParagraph =
@@ -263,6 +279,65 @@ const ALL_ITEMS: SlashItem[] = [
     },
   },
   {
+    id: 'record',
+    title: 'Voice recording',
+    description: 'Record straight into the page',
+    icon: Mic,
+    keywords: ['audio', 'voice', 'record', 'mic', 'memo', 'dictate', 'sound'],
+    section: 'Blocks',
+    // No focus: the block's own controls take over, and refocusing the page
+    // here would fight them.
+    run: (editor, range) =>
+      insertBlock(editor, range, { type: 'audioBlock', attrs: {} }, undefined, false),
+  },
+  {
+    id: 'audio',
+    title: 'Audio file',
+    description: 'Add a clip from your computer',
+    icon: AudioLines,
+    keywords: ['sound', 'music', 'mp3', 'm4a', 'wav', 'media', 'upload', 'voice'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      void pickFile('audio/*').then(file => {
+        if (!file) return
+        void saveMedia(file, file.name).then(async rec => {
+          const duration = await probeDuration(rec.blob)
+          const sel = editor.state.selection
+          insertBlock(editor, { from: sel.from, to: sel.to }, {
+            type: 'audioBlock',
+            attrs: { mediaId: rec.id, name: rec.name, duration },
+          })
+        })
+      })
+    },
+  },
+  {
+    id: 'progress',
+    title: 'Progress',
+    description: 'Rings you click to move along',
+    icon: CircleDashed,
+    keywords: ['bar', 'ring', 'percent', 'goal', 'tracker', 'meter', 'dial', 'completion'],
+    section: 'Blocks',
+    run: (editor, range) => {
+      // No focus: the first ring's title input claims it as the node view
+      // mounts, and refocusing the page here would race that.
+      insertBlock(
+        editor,
+        range,
+        { type: 'progressBlock', attrs: { size: PROGRESS_DEFAULT_SIZE, bars: [emptyBar()] } },
+        undefined,
+        false,
+      )
+      // Park the caret after the atom: its NodeSelection would otherwise stick
+      // (stopEvent swallows the click that would clear it), and a keystroke
+      // landing before the title input is focused would replace the block.
+      editor.commands.setTextSelection(
+        Math.min(editor.state.selection.to + 1, editor.state.doc.content.size),
+      )
+    },
+  },
+  {
     id: 'footnote',
     title: 'Footnote',
     description: 'A small note in the margin',
@@ -319,6 +394,59 @@ const ALL_ITEMS: SlashItem[] = [
     },
   },
   {
+    id: 'ref-block',
+    title: 'Reference a block',
+    description: 'Point at a paragraph anywhere in the vault',
+    icon: CornerDownRight,
+    keywords: ['block', 'quote', 'link', 'transclude', 'cite', 'find'],
+    section: 'Pages',
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      blockPick.current = pick => {
+        const sel = editor.state.selection
+        const range = { from: sel.from, to: sel.to }
+        // A group's blocks span pages, so a reference to one points at the
+        // group rather than at any single place a reader could be sent.
+        insertBlock(
+          editor,
+          range,
+          pick.kind === 'group'
+            ? { type: 'groupRef', attrs: { tag: pick.tag } }
+            : { type: 'blockRef', attrs: { pageId: pick.hit.pageId, text: pick.hit.text } },
+        )
+      }
+      useStore.getState().setBlockSearchOpen(true)
+    },
+  },
+  {
+    id: 'copy-block',
+    title: 'Copy a block here',
+    description: 'Paste a copy of a block from anywhere in the vault',
+    icon: ClipboardPaste,
+    keywords: ['block', 'duplicate', 'paste', 'insert', 'find'],
+    section: 'Pages',
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      blockPick.current = pick => {
+        const sel = editor.state.selection
+        // The node's own JSON is the storage format — a copy is the copy. A
+        // group pastes every member, in the order the group is read in, and
+        // without the tags: these are copies living here now, not a second
+        // claim on the group.
+        const content =
+          pick.kind === 'group'
+            ? groupBlocks(useStore.getState().pages, pick.tag, groupOrder(pick.tag)).map(m => ({
+                ...m.node,
+                attrs: { ...(m.node.attrs ?? {}), tags: null, blockId: null },
+              }))
+            : pick.hit.node
+        if (Array.isArray(content) && !content.length) return
+        insertBlock(editor, { from: sel.from, to: sel.to }, content as JSONContent)
+      }
+      useStore.getState().setBlockSearchOpen(true)
+    },
+  },
+  {
     id: 'link-page',
     title: 'Link to page',
     description: 'Point at an existing page',
@@ -337,7 +465,13 @@ const ALL_ITEMS: SlashItem[] = [
 ]
 
 /** Blocks that only make sense inside a page — hidden in card editors. */
-export const CARD_SLASH_EXCLUDE: ReadonlySet<string> = new Set(['table', 'page', 'link-page'])
+export const CARD_SLASH_EXCLUDE: ReadonlySet<string> = new Set([
+  'table',
+  'page',
+  'link-page',
+  'ref-block',
+  'copy-block',
+])
 
 export function filterSlashItems(query: string, exclude?: ReadonlySet<string>): SlashItem[] {
   // Spaces are allowed ("/code block"), so hide once the query stops looking

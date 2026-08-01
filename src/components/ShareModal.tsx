@@ -71,7 +71,7 @@ export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () =>
               <FileCode2 size={15} strokeWidth={1.7} />
               <span>
                 <strong>Interactive HTML</strong>
-                <em>.html — view-only in any browser</em>
+                <em>.html — read and review in any browser</em>
               </span>
             </button>
           </div>
@@ -79,7 +79,7 @@ export function ShareModal({ pageId, onClose }: { pageId: string; onClose: () =>
           <div className="share-note">
             {format === 'zip'
               ? `Exports plain markdown in a zip. Unzipped, it opens directly in Arete as a vault — pages, hierarchy${cards ? ', and cards' : ''} intact.`
-              : `One self-contained file that looks like Arete, readable anywhere${cards ? ' — cards appear as chips beside the text they highlight, ready to review' : ''}.`}
+              : `One self-contained file that IS Arete — sidebar, pages, light and dark${cards ? ', and a working Review and Cards view. Answers advance the session but nothing is saved: a file has nowhere to write them' : ''}.`}
           </div>
 
           <button type="button" className="share-toggle" onClick={() => setSubpages(o => !o)}>

@@ -13,6 +13,9 @@ import { PageView } from './components/PageView'
 import { PagePeek } from './components/PagePeek'
 import { DatabasePage } from './components/db/DatabasePage'
 import { SearchModal } from './components/SearchModal'
+import { BlockSearchModal } from './components/BlockSearchModal'
+import { GroupWindow } from './components/GroupWindow'
+import { TagManager } from './components/TagManager'
 import { ReviewView } from './components/ReviewView'
 import { CardsView } from './components/CardsView'
 import { InsightsView } from './components/InsightsView'
@@ -21,6 +24,11 @@ export default function App() {
   const theme = useStore(s => s.theme)
   const sidebarOpen = useStore(s => s.sidebarOpen)
   const searchOpen = useStore(s => s.searchOpen)
+  const blockSearchOpen = useStore(s => s.blockSearchOpen)
+  const openGroup = useStore(s => s.openGroup)
+  const tagManagerOpen = useStore(s => s.tagManagerOpen)
+  const setTagManagerOpen = useStore(s => s.setTagManagerOpen)
+  const setOpenGroup = useStore(s => s.setOpenGroup)
   const pages = useStore(s => s.pages)
   const activePageId = useStore(s => s.activePageId)
   const openPage = useStore(s => s.openPage)
@@ -144,6 +152,9 @@ export default function App() {
         </main>
       </div>
       {searchOpen && <SearchModal />}
+      {blockSearchOpen && <BlockSearchModal />}
+      {openGroup && <GroupWindow tag={openGroup} onClose={() => setOpenGroup(null)} />}
+      {tagManagerOpen && <TagManager onClose={() => setTagManagerOpen(false)} />}
       <PagePeek />
     </div>
   )

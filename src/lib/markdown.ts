@@ -1,5 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
 import type { Page } from '../store/types'
+import { parseProgressJSON, progressToJSON, sanitizeProgress } from './progress'
+// From `audio`, not `media`: media imports `sanitizeFilename` from this file,
+// and the pair would be a cycle. `audio` is a leaf.
+import { isAudioName } from './audio'
 
 /**
  * Markdown round-trip for vault mode: pages live on disk as plain markdown
@@ -14,6 +18,9 @@ import type { Page } from '../store/types'
 // ---------------------------------------------------------------------------
 
 type TitleResolver = (pageId: string) => string | null
+
+/** Info string that marks a fenced block as a progress row. */
+const PROGRESS_FENCE = 'arete-progress'
 
 /** Footnote text is markdown itself, kept on one line inside `^[…]`:
  * backslashes and `]` are escaped, newlines become literal `\n`. */
@@ -117,7 +124,22 @@ function listToMd(
   return lines.join('\n')
 }
 
+/**
+ * A block, with its tag/id marker if it has one.
+ *
+ * The marker is emitted here rather than at the top level, so a block nested
+ * inside a callout, a toggle or a quote writes it too — those are exactly the
+ * places the handle descends into, and a tag put on one of them used to be
+ * dropped on the way to disk.
+ */
 function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
+  const body = blockBody(node, resolve)
+  if (body === null) return null
+  const meta = blockMeta(node)
+  return meta ? `${meta}\n${body}` : body
+}
+
+function blockBody(node: JSONContent, resolve: TitleResolver): string | null {
   switch (node.type) {
     case 'paragraph': {
       return inlinesToMd(node.content, resolve)
@@ -189,6 +211,10 @@ function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
     }
     case 'horizontalRule':
       return '---'
+    case 'progressBlock':
+      // Structured, not prose: a fenced block keeps the payload out of the
+      // reading flow and renders as an inert code block anywhere else.
+      return '```arete-progress\n' + progressToJSON(sanitizeProgress(node.attrs)) + '\n```'
     case 'mathBlock':
       return `$$\n${node.attrs?.latex ?? ''}\n$$`
     case 'pageLink': {
@@ -197,19 +223,60 @@ function blockToMd(node: JSONContent, resolve: TitleResolver): string | null {
       const target = title ?? 'arete:' + (id ?? '?')
       return node.attrs?.owner ? `![[${target}]]` : `[[${target}]]`
     }
+    case 'groupRef':
+      // The tag is the whole reference — membership and order are resolved
+      // when it opens, so nothing about them belongs in the file.
+      return `<div data-group-ref="${String(node.attrs?.tag ?? '').replace(/"/g, '&quot;')}"></div>`
+    case 'blockRef': {
+      // The page by title (like a wiki link) and the block by the words it
+      // had — no id is minted into the paragraph being pointed at.
+      const id = node.attrs?.pageId as string | null
+      const title = id ? resolve(id) : null
+      const target = (title ?? 'arete:' + (id ?? '?')).replace(/"/g, '&quot;')
+      return `<div data-block-ref="${target}">${String(node.attrs?.text ?? '')}</div>`
+    }
     case 'imageBlock':
-    case 'htmlBlock': {
-      // `![name|size](media/<id>__<file>)` — Obsidian-style size suffix.
+    case 'htmlBlock':
+    case 'audioBlock': {
+      // `![name|size](media/<id>__<file>)` — Obsidian-style size suffix, where
+      // "size" is width, embed height, or an audio clip's duration.
       const id = (node.attrs?.mediaId as string) ?? ''
       const name = (node.attrs?.name as string) || 'file'
-      const size = node.type === 'imageBlock' ? node.attrs?.width : node.attrs?.height
+      const size =
+        node.type === 'imageBlock'
+          ? node.attrs?.width
+          : node.type === 'audioBlock'
+            ? node.attrs?.duration
+            : node.attrs?.height
       const label = size ? `${name}|${size}` : name
+      // An armed recorder with nothing in it yet has no file to point at.
+      if (!id) return null
       return `![${label}](media/${id}__${sanitizeFilename(name) || 'file'})`
     }
     default:
       return null
   }
 }
+
+/**
+ * Tags and a block id ride on a comment line above the block rather than
+ * inside it. On its own line it works the same for a paragraph, a list and a
+ * code fence — which a trailing marker does not — it survives any markdown
+ * renderer as a comment, and a block that carries neither writes nothing at
+ * all, so an untagged vault is byte-for-byte what it always was.
+ */
+function blockMeta(node: JSONContent): string | null {
+  const tags = (node.attrs?.tags as string[] | undefined)?.filter(Boolean) ?? []
+  const id = (node.attrs?.blockId as string | undefined) ?? ''
+  if (!tags.length && !id) return null
+  const parts = [
+    id ? `block="${id}"` : '',
+    tags.length ? `tags="${tags.join(',')}"` : '',
+  ].filter(Boolean)
+  return `<!--arete ${parts.join(' ')}-->`
+}
+
+export const BLOCK_META_RE = /^<!--arete(?:\s+block="([^"]*)")?(?:\s+tags="([^"]*)")?\s*-->\s*$/
 
 export function docToMarkdown(doc: JSONContent | null | undefined, resolve: TitleResolver): string {
   const blocks = (doc?.content ?? [])
@@ -574,8 +641,35 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
     }
   }
 
+  /** Tags/id read off a marker line, waiting for the block underneath it. */
+  let pending: { blockId?: string; tags?: string[] } | null = null
+  const claim = (): { blockId?: string; tags?: string[] } | null => {
+    const held = pending
+    pending = null
+    return held
+  }
+  const pushed = blocks.push.bind(blocks)
+  blocks.push = ((...added: JSONContent[]) => {
+    const meta = claim()
+    if (meta && added.length) {
+      added[0] = { ...added[0], attrs: { ...(added[0].attrs ?? {}), ...meta } }
+    }
+    return pushed(...added)
+  }) as typeof blocks.push
+
   while (i < lines.length) {
     const line = lines[i]
+
+    const meta = BLOCK_META_RE.exec(line)
+    if (meta) {
+      const tags = (meta[2] ?? '').split(',').filter(Boolean)
+      pending = {
+        ...(meta[1] ? { blockId: meta[1] } : {}),
+        ...(tags.length ? { tags } : {}),
+      }
+      i++
+      continue
+    }
 
     const list = /^(\s*)(?:([-*+])|(\d+)\.)\s(?:\[([ xX])\]\s)?(.*)$/.exec(line)
     if (list) {
@@ -596,6 +690,7 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
     }
 
     if (line.startsWith('```')) {
+      const info = line.slice(3).trim().toLowerCase()
       const code: string[] = []
       i++
       while (i < lines.length && !lines[i].startsWith('```')) {
@@ -603,6 +698,15 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
         i++
       }
       i++
+      if (info === PROGRESS_FENCE) {
+        const data = parseProgressJSON(code.join('\n'))
+        // Unparseable payload falls through to a code block: a hand-edit that
+        // broke the JSON stays visible on the page instead of vanishing.
+        if (data) {
+          blocks.push({ type: 'progressBlock', attrs: { size: data.size, bars: data.bars } })
+          continue
+        }
+      }
       blocks.push({
         type: 'codeBlock',
         content: code.length ? [t(code.join('\n'))] : undefined,
@@ -658,12 +762,42 @@ function parseBlocks(lines: string[], resolve: LinkResolver): JSONContent[] {
     if (mediaEmbed) {
       const [, label, size, id, file] = mediaEmbed
       const html = /\.html?$/i.test(file)
+      const audio = !html && isAudioName(file)
+      // The `|n` slot means whatever the block measures itself in: image
+      // width, embed height, or — for audio — duration in seconds.
+      const sized = size
+        ? html
+          ? { height: Number(size) }
+          : audio
+            ? { duration: Number(size) }
+            : { width: Number(size) }
+        : {}
       blocks.push({
-        type: html ? 'htmlBlock' : 'imageBlock',
+        type: html ? 'htmlBlock' : audio ? 'audioBlock' : 'imageBlock',
         attrs: {
           mediaId: id,
           name: label || file,
-          ...(size ? (html ? { height: Number(size) } : { width: Number(size) }) : {}),
+          ...sized,
+        },
+      })
+      i++
+      continue
+    }
+
+    const gref = /^<div data-group-ref="([^"]*)"><\/div>\s*$/.exec(line)
+    if (gref) {
+      blocks.push({ type: 'groupRef', attrs: { tag: gref[1].replace(/&quot;/g, '"') } })
+      i++
+      continue
+    }
+
+    const bref = /^<div data-block-ref="([^"]*)">([\s\S]*?)<\/div>\s*$/.exec(line)
+    if (bref) {
+      blocks.push({
+        type: 'blockRef',
+        attrs: {
+          pageId: resolveWikiTarget(bref[1].replace(/&quot;/g, '"'), resolve),
+          text: bref[2],
         },
       })
       i++

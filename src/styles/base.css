@@ -29,6 +29,7 @@
 
   --code-bg: rgba(32, 58, 49, 0.062);
   --callout-bg: rgba(46, 107, 94, 0.072);
+  --progress-track: rgba(32, 58, 49, 0.1);
 
   --danger: #bc4b30;
   --danger-strong: #a53f27;
@@ -72,6 +73,7 @@
 
   --code-bg: rgba(224, 240, 233, 0.07);
   --callout-bg: rgba(111, 186, 165, 0.085);
+  --progress-track: rgba(224, 240, 233, 0.11);
 
   --danger: #d96a4d;
   --danger-strong: #e37f64;

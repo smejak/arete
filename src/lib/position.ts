@@ -9,11 +9,16 @@ export interface Placed {
 /**
  * Position a floating element near an anchor (rect or point), flipping above
  * when there's more room, and clamping to the viewport with an 8px inset.
+ *
+ * `prefer: 'above'` inverts that preference — it opens upwards unless the
+ * element genuinely will not fit there and there is more room below. Touch
+ * surfaces want this: the hand that just tapped covers everything under the
+ * anchor.
  */
 export function placeFloating(
   anchor: Anchor,
   size: { width: number; height: number },
-  opts: { gap?: number; align?: 'start' | 'end' } = {},
+  opts: { gap?: number; align?: 'start' | 'end'; prefer?: 'above' | 'below' } = {},
 ): Placed {
   const gap = opts.gap ?? 6
   const r =
@@ -25,7 +30,10 @@ export function placeFloating(
 
   const spaceBelow = vh - r.bottom - gap - 8
   const spaceAbove = r.top - gap - 8
-  const down = size.height <= spaceBelow || spaceBelow >= spaceAbove
+  const down =
+    opts.prefer === 'above'
+      ? size.height > spaceAbove && spaceBelow > spaceAbove
+      : size.height <= spaceBelow || spaceBelow >= spaceAbove
 
   let top = down ? r.bottom + gap : r.top - gap - size.height
   top = Math.max(8, Math.min(top, vh - size.height - 8))

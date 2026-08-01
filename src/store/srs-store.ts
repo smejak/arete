@@ -42,12 +42,36 @@ interface SrsState {
   ) => void
   toggleArchive: (id: string) => void
   deleteCard: (id: string) => void
+  /** Archive or unarchive a whole selection. Returns how many actually
+   * changed — cards already in the target state are left alone, so a mixed
+   * selection can be squared up in one action. */
+  setArchived: (ids: string[], archived: boolean) => number
+  /** Delete a whole selection. Returns how many were removed. */
+  deleteCards: (ids: string[]) => number
   reviewCard: (id: string, rating: 1 | 2 | 3 | 4, elapsedMs: number) => void
   /** Auto-archive expired temporary cards. Safe to call often. */
   sweep: (now?: number) => void
 }
 
 const snippet = (s: string) => { const t = stripMd(s); return (t.length > 60 ? t.slice(0, 57) + '…' : t) || 'Untitled card' }
+
+/**
+ * History, analytics and the source-page snapshot are bookkeeping. They run
+ * *after* the card has already been written, and must not be able to fail the
+ * action that wrote it: a throw here propagated all the way back into the
+ * caller's click handler, so a card could be created and stored while its
+ * composer stayed open with nothing to say it had worked.
+ *
+ * The card is the product; this is the paperwork. If the paperwork fails, say
+ * so on the console and carry on.
+ */
+function journal(what: string, fn: () => void): void {
+  try {
+    fn()
+  } catch (err) {
+    console.error(`arete: ${what} history/analytics failed — the change itself is saved`, err)
+  }
+}
 
 /** Snapshot the source page alongside card activity, per the history spec. */
 function snapshotSourcePage(pageId: string | null) {
@@ -86,9 +110,11 @@ export const useSrsStore = create<SrsState>()(
           delete graveyard[id]
           return { cards: { ...s.cards, [id]: card }, graveyard }
         })
-        recordCardVersion(card, 'create', scheduleLabel(card))
-        appendEvent({ kind: 'card-create', label: snippet(card.front), cardId: id, pageId: input.pageId ?? undefined })
-        snapshotSourcePage(input.pageId)
+        journal('card-create', () => {
+          recordCardVersion(card, 'create', scheduleLabel(card))
+          appendEvent({ kind: 'card-create', label: snippet(card.front), cardId: id, pageId: input.pageId ?? undefined })
+          snapshotSourcePage(input.pageId)
+        })
         return id
       },
 
@@ -97,40 +123,84 @@ export const useSrsStore = create<SrsState>()(
         if (!prev) return
         const card: SrsCard = { ...prev, ...patch, updatedAt: Date.now() }
         set(s => ({ cards: { ...s.cards, [id]: card } }))
-        recordCardVersion(card, 'edit', scheduleLabel(card))
-        appendEvent({ kind: 'card-edit', label: snippet(card.front), cardId: id, pageId: card.pageId ?? undefined })
-        snapshotSourcePage(card.pageId)
+        journal('card-edit', () => {
+          recordCardVersion(card, 'edit', scheduleLabel(card))
+          appendEvent({ kind: 'card-edit', label: snippet(card.front), cardId: id, pageId: card.pageId ?? undefined })
+          snapshotSourcePage(card.pageId)
+        })
       },
 
       toggleArchive: id => {
         const prev = get().cards[id]
-        if (!prev) return
-        const archived = !prev.archived
-        const card: SrsCard = {
-          ...prev,
-          archived,
-          archivedAt: archived ? Date.now() : undefined,
-          updatedAt: Date.now(),
-        }
-        set(s => ({ cards: { ...s.cards, [id]: card } }))
-        recordCardVersion(card, archived ? 'archive' : 'unarchive', scheduleLabel(card))
-        appendEvent({
-          kind: archived ? 'card-archive' : 'card-unarchive',
-          label: snippet(card.front),
-          cardId: id,
-          pageId: card.pageId ?? undefined,
-        })
+        if (prev) get().setArchived([id], !prev.archived)
       },
 
       deleteCard: id => {
-        const prev = get().cards[id]
-        if (!prev) return
+        get().deleteCards([id])
+      },
+
+      // Bulk actions write ONCE and then record history per card, the way
+      // `sweep` does: a selection of two hundred cards must not mean two
+      // hundred store writes, each waking persistence and the vault sync.
+      setArchived: (ids, archived) => {
+        const now = Date.now()
+        const before = get().cards
+        const changing = ids.filter(id => before[id] && before[id].archived !== archived)
+        if (!changing.length) return 0
         set(s => {
           const cards = { ...s.cards }
-          delete cards[id]
-          return { cards, graveyard: { ...s.graveyard, [id]: Date.now() } }
+          for (const id of changing) {
+            cards[id] = {
+              ...cards[id],
+              archived,
+              archivedAt: archived ? now : undefined,
+              updatedAt: now,
+            }
+          }
+          return { cards }
         })
-        appendEvent({ kind: 'card-delete', label: snippet(prev.front), cardId: id, pageId: prev.pageId ?? undefined })
+        journal('card-archive', () => {
+          for (const id of changing) {
+            const card = get().cards[id]
+            recordCardVersion(card, archived ? 'archive' : 'unarchive', scheduleLabel(card))
+            appendEvent({
+              kind: archived ? 'card-archive' : 'card-unarchive',
+              label: snippet(card.front),
+              cardId: id,
+              pageId: card.pageId ?? undefined,
+            })
+          }
+        })
+        return changing.length
+      },
+
+      deleteCards: ids => {
+        const before = get().cards
+        const going = ids.map(id => before[id]).filter((c): c is SrsCard => !!c)
+        if (!going.length) return 0
+        const now = Date.now()
+        set(s => {
+          const cards = { ...s.cards }
+          const graveyard = { ...s.graveyard }
+          for (const card of going) {
+            delete cards[card.id]
+            // A tombstone, not just a removal: the vault merge would otherwise
+            // resurrect the card from another device's copy.
+            graveyard[card.id] = now
+          }
+          return { cards, graveyard }
+        })
+        journal('card-delete', () => {
+          for (const card of going) {
+            appendEvent({
+              kind: 'card-delete',
+              label: snippet(card.front),
+              cardId: card.id,
+              pageId: card.pageId ?? undefined,
+            })
+          }
+        })
+        return going.length
       },
 
       reviewCard: (id, rating, elapsedMs) => {
@@ -170,10 +240,12 @@ export const useSrsStore = create<SrsState>()(
           cards: { ...s.cards, [id]: card },
           logs: [...s.logs, entry].slice(-LOG_CAP),
         }))
-        if (result.archived && !prev.archived) {
-          recordCardVersion(card, 'archive', scheduleLabel(card))
-          appendEvent({ kind: 'card-archive', label: snippet(card.front), cardId: id, pageId: card.pageId ?? undefined })
-        }
+        journal('card-review', () => {
+          if (result.archived && !prev.archived) {
+            recordCardVersion(card, 'archive', scheduleLabel(card))
+            appendEvent({ kind: 'card-archive', label: snippet(card.front), cardId: id, pageId: card.pageId ?? undefined })
+          }
+        })
       },
 
       sweep: (now = Date.now()) => {
@@ -188,11 +260,13 @@ export const useSrsStore = create<SrsState>()(
           }
           return { cards }
         })
-        for (const c of expired) {
-          const card = get().cards[c.id]
-          recordCardVersion(card, 'archive', scheduleLabel(card))
-          appendEvent({ kind: 'card-archive', label: snippet(card.front), cardId: c.id, pageId: card.pageId ?? undefined })
-        }
+        journal('card-sweep', () => {
+          for (const c of expired) {
+            const card = get().cards[c.id]
+            recordCardVersion(card, 'archive', scheduleLabel(card))
+            appendEvent({ kind: 'card-archive', label: snippet(card.front), cardId: c.id, pageId: card.pageId ?? undefined })
+          }
+        })
       },
     }),
     {

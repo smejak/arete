@@ -1073,6 +1073,81 @@
   opacity: 0.62;
 }
 
+.card-row.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The row is the frame; this button is everything in it that opens the card. */
+.card-row-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Checkboxes stay out of the way until the list is in use — on hover, or once
+   a selection exists anywhere in it. */
+.card-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.card-row:hover .card-check,
+.cards-list.is-selecting .card-check,
+.card-check:checked,
+.card-check:focus-visible {
+  opacity: 1;
+}
+
+.cards-bulk {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--bg-pop);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.cards-bulk-n {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.cards-bulk-gap {
+  flex: 1;
+}
+
+.cards-bulk .confirm-inline {
+  flex: 1;
+}
+
+.pop-action.is-danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .card-row-main {
   flex: 1;
   min-width: 0;

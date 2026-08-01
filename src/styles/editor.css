@@ -808,22 +808,80 @@
   padding: 10px 14px;
 }
 
-.media-lightbox {
+/* Read-only, the picture is its own button — the hover-only expand control
+   never appears on a touch screen. */
+.image-shell img {
+  cursor: zoom-in;
+}
+
+.tiptap[contenteditable='true'] .image-shell img {
+  cursor: default;
+}
+
+/* -------------------------------- viewer --------------------------------- */
+/* Full screen, pinch and pan. `touch-action: none` is load-bearing: without it
+   the webview claims the gesture for scrolling before we see the second
+   pointer. */
+
+.media-viewer {
   position: fixed;
   inset: 0;
   z-index: 1100;
   display: grid;
   place-items: center;
-  background: rgba(10, 14, 13, 0.72);
-  animation: fade-in 0.12s ease;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  background: rgba(10, 14, 13, calc(0.88 * var(--viewer-dim, 1)));
+  animation: fade-in 0.14s ease;
   cursor: zoom-out;
 }
 
-.media-lightbox img {
-  max-width: 94vw;
-  max-height: 92vh;
-  border-radius: 10px;
-  box-shadow: var(--shadow-modal);
+.media-viewer.is-zoomed {
+  cursor: grab;
+}
+
+/* Fit first; every pixel beyond that is the transform's doing. */
+.media-viewer img {
+  max-width: 100vw;
+  max-height: 100vh;
+  transform-origin: center;
+  will-change: transform;
+  -webkit-user-drag: none;
+}
+
+.media-viewer-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(18, 26, 23, 0.5);
+  backdrop-filter: blur(6px);
+}
+
+.media-viewer-close:hover {
+  background: rgba(18, 26, 23, 0.72);
+}
+
+/* A pinch that is still under way should track the fingers exactly; only the
+   double-tap jump is worth animating. */
+.media-viewer:not(.is-pinching) img {
+  transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-viewer img {
+    transition: none;
+  }
 }
 
 /* ------------------------------- html embeds ------------------------------ */
@@ -907,4 +965,190 @@
   border: 0;
   border-radius: 8px;
   background: #fff;
+}
+
+/* ------------------------------ block refs -------------------------------- */
+/* A pointer at a paragraph elsewhere. One quiet line — it is a link, not a
+   quotation, and a card-sized box for a sentence you already wrote once reads
+   as duplication. The words are there because they are also how it finds its
+   way back. */
+
+.block-ref {
+  margin: 1px 0;
+}
+
+.bref {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  padding: 3px 7px;
+  margin: 0 -7px;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.bref:hover:not([disabled]) {
+  background: var(--bg-hover);
+}
+
+.bref[disabled] {
+  cursor: default;
+}
+
+.block-ref.is-selected .bref {
+  background: var(--glow);
+}
+
+.bref-mark {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 3px;
+  color: var(--text-3);
+}
+
+.bref:hover:not([disabled]) .bref-mark {
+  color: var(--accent);
+}
+
+.bref-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.94em;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+  transition: color 0.12s ease, text-decoration-color 0.12s ease;
+}
+
+.bref:hover:not([disabled]) .bref-text {
+  color: var(--text);
+  text-decoration-color: var(--text-3);
+}
+
+.bref-text.is-stale {
+  font-style: italic;
+}
+
+.bref-src {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.bref-src-icon {
+  display: inline-grid;
+  place-items: center;
+}
+
+.bref-stale {
+  color: var(--code-inline);
+}
+
+/* The landing: a reference scrolls here and the block glows, holds, lets go.
+   One class, because the decoration that carries it is set once and cleared
+   once — the hold and the fade are the keyframes' business. */
+.tiptap .block-flash {
+  border-radius: 5px;
+  animation: block-flash 5.4s ease forwards;
+}
+
+@keyframes block-flash {
+  0% {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+  4%,
+  74% {
+    background: var(--hl);
+    box-shadow: 0 0 0 6px var(--hl);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* ------------------------------ group refs -------------------------------- */
+/* Bigger than a block reference on purpose: a group is several things, and a
+   line of chrome saying "3 blocks" tells you nothing about which three. */
+
+.group-ref {
+  margin: 6px 0;
+}
+
+.gref {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 13px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.gref:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.group-ref.is-selected .gref {
+  background: var(--glow);
+}
+
+.gref-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.gref-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.gref-count {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.gref-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 20px;
+  border-left: 2px solid var(--border);
+  margin-left: 4px;
+}
+
+.gref-line {
+  font-size: 0.88em;
+  line-height: 1.5;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gref-more {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-style: italic;
 }

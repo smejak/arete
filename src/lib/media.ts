@@ -58,6 +58,12 @@ export function mimeFromName(name: string): string {
     webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp',
     ico: 'image/x-icon', tiff: 'image/tiff', tif: 'image/tiff',
     html: 'text/html;charset=utf-8', htm: 'text/html;charset=utf-8',
+    // Audio. A blob handed to <audio> with the wrong type simply refuses to
+    // play, so every extension we accept has to resolve to something real.
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4a: 'audio/mp4', aac: 'audio/aac',
+    wav: 'audio/wav', wave: 'audio/wav', aiff: 'audio/aiff', aif: 'audio/aiff',
+    caf: 'audio/x-caf', flac: 'audio/flac', oga: 'audio/ogg', ogg: 'audio/ogg',
+    opus: 'audio/ogg', weba: 'audio/webm', webm: 'audio/webm',
   }
   return map[ext] ?? 'application/octet-stream'
 }

@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Extension, Node, mergeAttributes } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
 import { FileCode2, ImageOff, Maximize2, X } from 'lucide-react'
+import { isAudioName, probeDuration } from '../../lib/audio'
 import { isHtmlName, saveMedia, useMediaText, useMediaURL, withBaseTarget } from '../../lib/media'
+import { useZoomPan } from '../../lib/use-zoom-pan'
 import { cx } from '../../lib/util'
 
 // ---------------------------------------------------------------------------
@@ -20,6 +22,49 @@ function useEscape(active: boolean, onClose: () => void) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [active, onClose])
+}
+
+// ---------------------------------------------------------------------------
+// Image viewer — the picture, full screen, under your fingers
+// ---------------------------------------------------------------------------
+
+function ImageViewer({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+  const container = useRef<HTMLDivElement>(null)
+  const img = useRef<HTMLImageElement>(null)
+  const { transform, swipe, interacting, zoomed, handlers } = useZoomPan({
+    containerRef: container,
+    contentRef: img,
+    onDismiss: onClose,
+  })
+  useEscape(true, onClose)
+
+  // The pull-down fades the backdrop as it goes, so the gesture reads as
+  // "putting it back" rather than "dragging something off the screen".
+  const progress = Math.min(1, swipe / 220)
+
+  return createPortal(
+    <div
+      ref={container}
+      className={cx('media-viewer', zoomed && 'is-zoomed', interacting && 'is-pinching')}
+      style={{ '--viewer-dim': String(1 - progress * 0.7) } as React.CSSProperties}
+      {...handlers}
+    >
+      <button type="button" className="media-viewer-close" onClick={onClose} title="Close (esc)">
+        <X size={18} strokeWidth={2} />
+      </button>
+      <img
+        ref={img}
+        src={url}
+        alt={name}
+        draggable={false}
+        style={{
+          transform: `translate(${transform.x}px, ${transform.y + swipe}px) scale(${transform.scale})`,
+          opacity: 1 - progress * 0.35,
+        }}
+      />
+    </div>,
+    document.body,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +111,19 @@ function ImageView({ node, selected, updateAttributes, editor }: NodeViewProps) 
             alt={node.attrs.name as string}
             style={width ? { width } : undefined}
             draggable={false}
+            // Read-only, the picture IS the button. The expand affordance only
+            // appears on hover, which a phone does not have, and a card image
+            // shrunk to fit a phone column is the one that most needs opening.
+            // The stop is not optional: on iOS this sits inside a review card
+            // whose own tap reveals the answer.
+            onClick={
+              editor.isEditable
+                ? undefined
+                : e => {
+                    e.stopPropagation()
+                    setLightbox(true)
+                  }
+            }
           />
         ) : (
           <span className="media-missing">
@@ -91,14 +149,13 @@ function ImageView({ node, selected, updateAttributes, editor }: NodeViewProps) 
           </>
         )}
       </div>
-      {lightbox &&
-        url &&
-        createPortal(
-          <div className="media-lightbox" onClick={() => setLightbox(false)}>
-            <img src={url} alt={node.attrs.name as string} />
-          </div>,
-          document.body,
-        )}
+      {lightbox && url && (
+        <ImageViewer
+          url={url}
+          name={(node.attrs.name as string) || ''}
+          onClose={() => setLightbox(false)}
+        />
+      )}
     </NodeViewWrapper>
   )
 }
@@ -278,13 +335,19 @@ export const MediaPaste = Extension.create({
 
   addProseMirrorPlugins() {
     const editor = this.editor
-    const acceptable = (f: File) => f.type.startsWith('image/') || isHtmlName(f.name)
+    const acceptable = (f: File) =>
+      f.type.startsWith('image/') || f.type.startsWith('audio/') || isHtmlName(f.name) || isAudioName(f.name)
     const insertFiles = (files: File[], pos?: number) => {
       files.forEach((file, i) => {
-        void saveMedia(file, file.name).then(rec => {
+        void saveMedia(file, file.name).then(async rec => {
+          const audio = isAudioName(rec.name) || rec.type.startsWith('audio/')
           const node = {
-            type: isHtmlName(rec.name) ? 'htmlBlock' : 'imageBlock',
-            attrs: { mediaId: rec.id, name: rec.name },
+            type: isHtmlName(rec.name) ? 'htmlBlock' : audio ? 'audioBlock' : 'imageBlock',
+            attrs: {
+              mediaId: rec.id,
+              name: rec.name,
+              ...(audio ? { duration: await probeDuration(rec.blob) } : {}),
+            },
           }
           const at = pos !== undefined ? pos + i : editor.state.selection.from
           editor.chain().insertContentAt(Math.min(at, editor.state.doc.content.size), node).run()
