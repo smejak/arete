@@ -19,6 +19,7 @@ import { TagManager } from './components/TagManager'
 import { ReviewView } from './components/ReviewView'
 import { CardsView } from './components/CardsView'
 import { InsightsView } from './components/InsightsView'
+import { HistoryStepper } from './components/HistoryStepper'
 
 export default function App() {
   const theme = useStore(s => s.theme)
@@ -27,6 +28,7 @@ export default function App() {
   const blockSearchOpen = useStore(s => s.blockSearchOpen)
   const openGroup = useStore(s => s.openGroup)
   const tagManagerOpen = useStore(s => s.tagManagerOpen)
+  const stepper = useStore(s => s.stepper)
   const setTagManagerOpen = useStore(s => s.setTagManagerOpen)
   const setOpenGroup = useStore(s => s.setOpenGroup)
   const pages = useStore(s => s.pages)
@@ -82,6 +84,18 @@ export default function App() {
       } else if (e.key.toLowerCase() === 't' && e.altKey) {
         e.preventDefault()
         useStore.getState().newTab()
+      } else if (e.shiftKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault()
+        const s = useStore.getState()
+        if (s.view !== 'page' || !s.activePageId) return
+        const page = s.pages[s.activePageId]
+        if (!page) return
+        // Capture what is on screen before stepping away from it. The no-op
+        // guard means this costs nothing when the page already has a version
+        // matching it, and when it doesn't, that state is exactly the one the
+        // reader will expect to come back to.
+        recordPageVersion(page, 'idle')
+        s.openStepper(s.activePageId)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -146,6 +160,7 @@ export default function App() {
           {view === 'page' && page && !page.db && (
             <PageView key={page.id + ':' + restoreNonce} pageId={page.id} />
           )}
+          {stepper && <HistoryStepper />}
           {view === 'review' && <ReviewView />}
           {view === 'cards' && <CardsView />}
           {view === 'insights' && <InsightsView />}

@@ -10,10 +10,12 @@ Arete is a workspace that combines note-taking with spaced repetition.
 
 1. **Download the app.** It's free, all your files are local, and no data ever
    leaves your computer.
-   [Download `Arete-v0.0.6.dmg`](https://github.com/smejak/arete/releases/download/v0.0.6/Arete-v0.0.6.dmg),
+   [Download `Arete-v0.0.7.dmg`](https://github.com/smejak/arete/releases/download/v0.0.7/Arete-v0.0.7.dmg),
    or browse all [releases](https://github.com/smejak/arete/releases).
-   *(The beta is unsigned — on first launch, right-click the app and choose
-   Open. Apple Silicon macOS. Arete also runs fully local in Chrome and Edge.)*
+   *(Apple Silicon macOS. Signed and notarized by Apple: the first launch asks
+   once for confirmation and opens, with no security warning to work around
+   and no trip through System Settings. Arete also runs fully local in Chrome
+   and Edge.)*
 2. **Create a new folder, or port over your existing notes.** Arete notes are
    plain `.md` files — pick any folder and it becomes your vault. Coming from
    Notion? Export as Markdown & CSV, unzip, and open that folder.
@@ -154,6 +156,14 @@ npm run tauri:dev    # native desktop window (needs Rust)
 npm run build        # typecheck (tsc) + production web build
 npm run tauri:build  # build the desktop app → src-tauri/target/release/bundle/
 ```
+
+`tauri:build` ad-hoc signs, so it works without an Apple certificate — the app
+runs locally, but macOS blocks a *downloaded* copy. Official releases go
+through `scripts/release-macos.sh`, which signs with a Developer ID
+certificate, notarizes, and then verifies the dmg it produced rather than
+trusting that the build succeeded. It needs `APPLE_SIGNING_IDENTITY` and
+notarization credentials in the environment; run it with none set and it says
+what is missing.
 
 ### Where things live
 

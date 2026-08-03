@@ -584,3 +584,216 @@ body.is-banding {
 .tiptap.is-block-selecting {
   caret-color: transparent;
 }
+
+/* ------------------------- stepping through history ----------------------- */
+
+/* The stepper covers the main column rather than replacing it: the live editor
+   stays mounted underneath, so cancelling is a single unmount with nothing to
+   restore and no chance of losing an unflushed keystroke. */
+.main {
+  position: relative;
+}
+
+.stepper {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: stepper-in 0.14s ease;
+}
+
+@keyframes stepper-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.stepbar-wrap {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.stepbar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 999px;
+  background: var(--bg-pop);
+  box-shadow: var(--shadow);
+  animation: stepbar-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes stepbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.stepbar-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.stepbar-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.stepbar-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.stepbar-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+
+.stepbar-when {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  min-width: 132px;
+  padding: 0 4px;
+}
+
+.stepbar-ts {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.stepbar-cause {
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.stepbar-count {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
+
+.stepbar-checkout {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.stepbar-checkout:disabled {
+  background: transparent;
+  color: var(--fg-dim);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.stepper-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.stepper-page .tiptap,
+.stepper-title {
+  cursor: default;
+}
+
+/* The title is a div here, not the page's textarea, and the icon is not a
+   button. Same classes for the same geometry; the affordances have to go. */
+.stepper-title {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stepper-icon:hover {
+  background: transparent;
+}
+
+.stepper-empty {
+  max-width: 420px;
+  margin: 26vh auto 0;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-dim);
+}
+
+/* Text that arrived in this version. Held, then faded — long enough to find,
+   short enough that the page reads normally a moment later. */
+.tiptap .step-add {
+  border-radius: 3px;
+  animation: step-add 1.5s ease forwards;
+}
+
+@keyframes step-add {
+  0% {
+    background: transparent;
+  }
+  6%,
+  62% {
+    background: var(--hl);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.tiptap .step-add-block {
+  border-radius: 5px;
+  animation: step-add-block 1.5s ease forwards;
+}
+
+@keyframes step-add-block {
+  0% {
+    background: transparent;
+    box-shadow: 0 0 0 5px transparent;
+  }
+  6%,
+  62% {
+    background: var(--hl);
+    box-shadow: 0 0 0 5px var(--hl);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+.hist-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

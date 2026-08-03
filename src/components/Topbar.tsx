@@ -11,6 +11,7 @@ import {
   Moon,
   MoreHorizontal,
   Plus,
+  Rewind,
   Share,
   Star,
   StarOff,
@@ -23,6 +24,7 @@ import { ancestorsOf, descendantsOf, wordCount } from '../lib/tree'
 import { cx, fmtRelative } from '../lib/util'
 import { PageIcon, iconText } from '../lib/icon'
 import { copyText, pageMarkdown } from '../lib/copy'
+import { recordPageVersion } from '../lib/history'
 import { Menu, Popover } from './Popover'
 import { PageHistoryModal } from './PageHistoryModal'
 import { ShareModal } from './ShareModal'
@@ -51,6 +53,7 @@ export function Topbar({ page }: { page: Page | null }) {
   const toggleFavorite = useStore(s => s.toggleFavorite)
   const duplicatePage = useStore(s => s.duplicatePage)
   const deletePage = useStore(s => s.deletePage)
+  const openStepper = useStore(s => s.openStepper)
 
   const view = useStore(s => s.view)
   const [menuAt, setMenuAt] = useState<DOMRect | null>(null)
@@ -317,6 +320,17 @@ export function Topbar({ page }: { page: Page | null }) {
                     onSelect: () => {
                       closeMenu()
                       setHistoryOpen(true)
+                    },
+                  },
+                  {
+                    icon: Rewind,
+                    label: 'Step through history',
+                    hint: '⌘⇧H',
+                    onSelect: () => {
+                      closeMenu()
+                      if (!page) return
+                      recordPageVersion(page, 'idle')
+                      openStepper(page.id)
                     },
                   },
                   { kind: 'sep' },

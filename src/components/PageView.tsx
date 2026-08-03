@@ -42,6 +42,7 @@ import { recordPageVersion } from '../lib/history'
 import { applyCardRefMark, flashBlockText, flashCardRefs, removeCardRefMarks } from '../lib/refs'
 import { EmojiPicker } from './EmojiPicker'
 import { CoverPicker } from './CoverPicker'
+import { FindBar } from './FindBar'
 import { SlashMenu, useSuggestionMenu } from './SlashMenu'
 import { MentionMenu } from './MentionMenu'
 import { Menu, Popover } from './Popover'
@@ -129,7 +130,7 @@ interface ComposerState {
   pageRight: number
 }
 
-export function PageView({ pageId }: { pageId: string }) {
+export function PageView({ pageId, peek = false }: { pageId: string; peek?: boolean }) {
   const page = useStore(s => s.pages[pageId])
   const updateTitle = useStore(s => s.updateTitle)
   const setIcon = useStore(s => s.setIcon)
@@ -149,6 +150,10 @@ export function PageView({ pageId }: { pageId: string }) {
   const pageElRef = useRef<HTMLDivElement>(null)
   const [iconPicker, setIconPicker] = useState<DOMRect | null>(null)
   const [coverPicker, setCoverPicker] = useState<DOMRect | null>(null)
+
+  const [findOpen, setFindOpen] = useState(false)
+  const [findSeed, setFindSeed] = useState('')
+  const [findNonce, setFindNonce] = useState(0)
 
   const [selMenu, setSelMenu] = useState<SelMenuState | null>(null)
   const [blockMenu, setBlockMenu] = useState<{ pos: number; at: DOMRect } | null>(null)
@@ -383,6 +388,29 @@ export function PageView({ pageId }: { pageId: string }) {
     timer = window.setTimeout(attempt, 60)
     return () => window.clearTimeout(timer)
   }, [flash, pageId, editor, clearFlash])
+
+  // ⌘F — find within this page. Two PageViews can be mounted at once (the
+  // main page and the side peek host one each); only the topmost surface
+  // claims the shortcut, and overlays that take typing keep it entirely.
+  useEffect(() => {
+    if (!editor) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return
+      if (e.key.toLowerCase() !== 'f') return
+      const s = useStore.getState()
+      if (s.searchOpen || s.blockSearchOpen || s.tagManagerOpen || s.openGroup || s.stepper) return
+      if (!!s.peekPageId !== peek) return
+      e.preventDefault()
+      // A live selection becomes the query; empty keeps the previous one.
+      const { from, to } = editor.state.selection
+      const sel = from === to ? '' : editor.state.doc.textBetween(from, to, '\n').split('\n')[0]
+      setFindSeed(sel.trim().slice(0, 200))
+      setFindOpen(true)
+      setFindNonce(n => n + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editor, peek])
 
   // "Add another highlight": capture the next selection in the page.
   useEffect(() => {
@@ -802,6 +830,15 @@ export function PageView({ pageId }: { pageId: string }) {
       {slashView && <SlashMenu view={slashView} />}
       {mentionView && <MentionMenu view={mentionView} />}
       <LinkMenu editor={editor} />
+
+      {editor && findOpen && (
+        <FindBar
+          editor={editor}
+          seed={findSeed}
+          nonce={findNonce}
+          onClose={() => setFindOpen(false)}
+        />
+      )}
 
       {blockMenu && (
         <Popover anchor={blockMenu.at} onClose={closeBlockMenu}>

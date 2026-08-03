@@ -56,7 +56,7 @@ export function PagePeek() {
         <div className="peek-body">
           {/* restoreNonce in the key: external edits (vault refresh) and
               version restores must remount the peeked editor too. */}
-          <PageView key={'peek:' + peekId + ':' + restoreNonce} pageId={peekId} />
+          <PageView key={'peek:' + peekId + ':' + restoreNonce} pageId={peekId} peek />
         </div>
       </aside>
     </div>,

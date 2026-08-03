@@ -120,6 +120,11 @@ interface AreteState {
   openGroup: string | null
   /** The whole vocabulary, in one place. */
   tagManagerOpen: boolean
+  /** Stepping through a page's history. `versionId` is where to start — the
+   * version the reader was looking at when they asked, so the first thing they
+   * see is what they already had. Nothing here touches the page: stepping is a
+   * preview, and only checking out writes. */
+  stepper: { pageId: string; versionId?: string } | null
   /** Copying a page swaps block references for the text they point at. Off by
    * default: a reference is a pointer, and that is usually what you want. */
   copyRefsAsText: boolean
@@ -179,6 +184,8 @@ interface AreteState {
   removeTagEverywhere: (name: string) => void
   setOpenGroup: (tag: string | null) => void
   setTagManagerOpen: (open: boolean) => void
+  openStepper: (pageId: string, versionId?: string) => void
+  closeStepper: () => void
   setCopyRefsAsText: (on: boolean) => void
   clearPendingFocus: () => void
   setPeek: (pageId: string | null) => void
@@ -255,6 +262,10 @@ export const useStore = create<AreteState>()(
           tabs,
           activeTabId,
           view: loc.view,
+          // Going anywhere ends a step-through. It previews one page against
+          // its own history, so carrying it to the next page would show that
+          // page wearing another one's versions.
+          stepper: null,
           ...(loc.pageId ? { activePageId: loc.pageId } : {}),
         }
       }
@@ -280,6 +291,7 @@ export const useStore = create<AreteState>()(
         tagRegistry: [],
         openGroup: null,
         tagManagerOpen: false,
+        stepper: null,
         copyRefsAsText: false,
         pendingFocusId: null,
         view: 'page',
@@ -891,6 +903,9 @@ export const useStore = create<AreteState>()(
 
         setOpenGroup: tag => set({ openGroup: tag }),
         setTagManagerOpen: open => set({ tagManagerOpen: open }),
+
+        openStepper: (pageId, versionId) => set({ stepper: { pageId, versionId } }),
+        closeStepper: () => set({ stepper: null }),
         setCopyRefsAsText: on => set({ copyRefsAsText: on }),
         clearPendingFocus: () => set({ pendingFocusId: null }),
         setPeek: pageId => set(s => (s.pages[pageId ?? ''] || pageId === null ? { peekPageId: pageId } : s)),

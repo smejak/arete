@@ -26,6 +26,7 @@ import { ProgressBlock } from './nodes/Progress'
 import { BlockSelect } from './BlockSelect'
 import { BlockFlash } from './BlockFlash'
 import { BlockTags } from './BlockTags'
+import { FindHighlight } from './FindHighlight'
 import { PageLink } from './nodes/PageLink'
 import { BlockRef } from './nodes/BlockRef'
 import { GroupRef } from './nodes/GroupRef'
@@ -267,6 +268,7 @@ export function buildExtensions(
     GroupRef,
     BlockFlash,
     BlockTags,
+    FindHighlight,
     MathInline,
     MathBlock,
     Footnote,

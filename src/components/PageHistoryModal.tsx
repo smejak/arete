@@ -6,6 +6,7 @@ import {
   Clock3,
   Keyboard,
   Plus,
+  Rewind,
   RotateCcw,
   ShieldCheck,
   Sparkles,
@@ -47,6 +48,7 @@ function ReadonlyDoc({ content }: { content: JSONContent | null }) {
 
 export function PageHistoryModal({ pageId, onClose }: { pageId: string; onClose: () => void }) {
   const restorePage = useStore(s => s.restorePage)
+  const openStepper = useStore(s => s.openStepper)
   const version = useSyncExternalStore(subscribeHistory, historyVersion)
 
   const versions = useMemo(
@@ -166,9 +168,22 @@ export function PageHistoryModal({ pageId, onClose }: { pageId: string; onClose:
                         </button>
                       </div>
                     ) : (
-                      <button type="button" className="btn" onClick={() => setConfirming(true)}>
-                        <RotateCcw size={13} strokeWidth={1.9} /> Restore this version
-                      </button>
+                      <div className="hist-foot-actions">
+                        <button
+                          type="button"
+                          className="btn"
+                          title="Move through the versions around this one"
+                          onClick={() => {
+                            onClose()
+                            openStepper(pageId, sel.id)
+                          }}
+                        >
+                          <Rewind size={13} strokeWidth={1.9} /> Step through from here
+                        </button>
+                        <button type="button" className="btn" onClick={() => setConfirming(true)}>
+                          <RotateCcw size={13} strokeWidth={1.9} /> Restore this version
+                        </button>
+                      </div>
                     )}
                   </div>
                 </>

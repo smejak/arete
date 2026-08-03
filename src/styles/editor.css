@@ -1080,6 +1080,19 @@
   }
 }
 
+/* ⌘F matches: every hit gets the alpenglow wash, the current one a ring so
+   the eye lands on it even when the page is dense with siblings. */
+.tiptap .find-hit {
+  background: var(--hl);
+  border-radius: 2px;
+}
+
+.tiptap .find-hit.is-current {
+  background: var(--glow);
+  box-shadow: 0 0 0 2.5px var(--glow);
+  border-radius: 3px;
+}
+
 /* ------------------------------ group refs -------------------------------- */
 /* Bigger than a block reference on purpose: a group is several things, and a
    line of chrome saying "3 blocks" tells you nothing about which three. */
